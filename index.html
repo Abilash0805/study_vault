@@ -805,12 +805,23 @@ function isJsxUrl(u) { return /\.(jsx|tsx)(\?|#|$)/i.test(u); }
 // sandboxed iframe. Closing script tags are escaped ("<\/script>") so the HTML
 // parser of the outer module script doesn't terminate early.
 function wrapJsx(source) {
-  const code = source
+  let code = source
     .split('\n')
     .filter(line => !/^\s*import\s/.test(line))
-    .join('\n')
-    .replace(/export\s+default\s+/g, '')
+    .join('\n');
+
+  // Capture the default export's name, e.g. "export default function Foo"
+  // or "export default Foo" or "export default class Foo". Anonymous
+  // default exports (export default function() {...} / () => {...}) have
+  // no identifier to capture and get assigned one below.
+  const namedDefault = code.match(/export\s+default\s+(?:function|class)?\s*([A-Za-z_$][\w$]*)/);
+  let rootName = namedDefault ? namedDefault[1] : null;
+
+  code = code
+    .replace(/export\s+default\s+/g, rootName ? '' : 'const __DefaultComponent = ')
     .replace(/^\s*export\s+/gm, '');
+
+  if (!rootName) rootName = '__DefaultComponent';
 
   return [
     '<!DOCTYPE html><html><head><meta charset="UTF-8">',
@@ -821,9 +832,9 @@ function wrapJsx(source) {
     '</head><body><div id="root"></div>',
     '<script type="text/babel" data-presets="react">',
     code,
-    ';const __Root = typeof App !== "undefined" ? App : null;',
+    `;const __Root = typeof ${rootName} !== "undefined" ? ${rootName} : (typeof App !== "undefined" ? App : null);`,
     'if (__Root) { ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(__Root)); }',
-    'else { document.getElementById("root").innerHTML = \'<p style="padding:2rem;color:#dc2626;font-family:sans-serif;">No component named App found. Define a component called App.</p>\'; }',
+    'else { document.getElementById("root").innerHTML = \'<p style="padding:2rem;color:#dc2626;font-family:sans-serif;">No exported component found. Use a default export, or define a component called App.</p>\'; }',
     '<\/script>',
     '</body></html>'
   ].join('\n');
