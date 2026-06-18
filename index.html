@@ -823,18 +823,41 @@ function wrapJsx(source) {
 
   if (!rootName) rootName = '__DefaultComponent';
 
+  // Babel's auto-running <script type="text/babel"> tag only supports the
+  // "react" preset via data-presets, which can't strip TypeScript type
+  // syntax in .tsx files (and fails silently with a blank page). Instead we
+  // stash the raw source in a non-executing tag and compile it ourselves
+  // with both the react and typescript presets, surfacing any compile or
+  // render error on-screen rather than leaving a blank iframe.
+  const escapedCode = code.replace(/<\/script/gi, '<\\/script');
+
   return [
     '<!DOCTYPE html><html><head><meta charset="UTF-8">',
     '<script src="https://unpkg.com/react@18/umd/react.production.min.js"><\/script>',
     '<script src="https://unpkg.com/react-dom@18/umd/react-dom.production.min.js"><\/script>',
     '<script src="https://unpkg.com/@babel/standalone@7/babel.min.js"><\/script>',
-    '<style>html,body,#root{min-height:100%;margin:0;font-family:sans-serif;}</style>',
+    '<style>html,body,#root{min-height:100%;margin:0;font-family:sans-serif;}',
+    '.jsx-error{padding:2rem;color:#dc2626;font-family:monospace;white-space:pre-wrap;font-size:.85rem;}</style>',
     '</head><body><div id="root"></div>',
-    '<script type="text/babel" data-presets="react">',
-    code,
-    `;const __Root = typeof ${rootName} !== "undefined" ? ${rootName} : (typeof App !== "undefined" ? App : null);`,
-    'if (__Root) { ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(__Root)); }',
-    'else { document.getElementById("root").innerHTML = \'<p style="padding:2rem;color:#dc2626;font-family:sans-serif;">No exported component found. Use a default export, or define a component called App.</p>\'; }',
+    '<script type="text/plain" id="__src">',
+    escapedCode,
+    '<\/script>',
+    '<script>',
+    'try {',
+    '  var __source = document.getElementById("__src").textContent;',
+    '  var __compiled = Babel.transform(__source, {',
+    '    presets: [["react"], ["typescript", { isTSX: true, allExtensions: true }]],',
+    '    filename: "material.tsx"',
+    '  }).code;',
+    `  var __fn = new Function("React", "ReactDOM", __compiled + ';return (typeof ${rootName} !== "undefined" ? ${rootName} : (typeof App !== "undefined" ? App : null));');`,
+    '  var __Root = __fn(React, ReactDOM);',
+    '  if (__Root) { ReactDOM.createRoot(document.getElementById("root")).render(React.createElement(__Root)); }',
+    '  else { document.getElementById("root").innerHTML = \'<div class="jsx-error">No exported component found. Use a default export, or define a component called App.</div>\'; }',
+    '} catch (err) {',
+    '  console.error(err);',
+    '  var __msg = (err && err.message ? err.message : String(err)).replace(/&/g,"&amp;").replace(/</g,"&lt;");',
+    '  document.getElementById("root").innerHTML = "<div class=\\"jsx-error\\">" + __msg + "</div>";',
+    '}',
     '<\/script>',
     '</body></html>'
   ].join('\n');
