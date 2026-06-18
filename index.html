@@ -890,6 +890,7 @@ async function openViewer(title, matId) {
   frame.removeAttribute('src');
 
   if (_viewerCache[matId]) {
+    frame.onload = () => frame.contentWindow && frame.contentWindow.focus();
     frame.srcdoc = _viewerCache[matId];
     return;
   }
@@ -904,6 +905,7 @@ async function openViewer(title, matId) {
       cd.addEventListener('keydown', blockKeys);
       cd.body.style.userSelect = 'none';
       cd.body.style.webkitUserSelect = 'none';
+      frame.contentWindow && frame.contentWindow.focus();
     } catch (_) {}
   }
 
