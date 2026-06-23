@@ -801,6 +801,26 @@ const _viewerCache = {};
 
 function isJsxUrl(u) { return /\.(jsx|tsx)(\?|#|$)/i.test(u); }
 
+// Parse a raw.githubusercontent.com URL into its parts. Handles both the legacy
+// form (USER/REPO/BRANCH/path) and the modern "Raw" button form that includes a
+// refs/heads/ or refs/tags/ prefix (USER/REPO/refs/heads/BRANCH/path).
+function parseGithubRaw(rawUrl) {
+  const m = rawUrl.match(/^https?:\/\/raw\.githubusercontent\.com\/(.+)$/);
+  if (!m) return null;
+  const parts = m[1].split('/').filter(Boolean);
+  if (parts.length < 4) return null;
+  const user = parts.shift();
+  const repo = parts.shift();
+  // Strip a refs/heads/ or refs/tags/ prefix if present.
+  if (parts[0] === 'refs' && (parts[1] === 'heads' || parts[1] === 'tags')) {
+    parts.splice(0, 2);
+  }
+  const branch = parts.shift();
+  const filePath = parts.join('/');
+  if (!branch || !filePath) return null;
+  return { user, repo, branch, filePath };
+}
+
 // Wraps a plain React component source (no bundler) so it can run inside the
 // sandboxed iframe. Closing script tags are escaped ("<\/script>") so the HTML
 // parser of the outer module script doesn't terminate early.
@@ -950,14 +970,13 @@ async function openViewer(title, matId) {
         if (rawUrl.includes('raw.githubusercontent.com')) {
           // Convert raw URL to GitHub Contents API URL
           // raw: https://raw.githubusercontent.com/USER/REPO/BRANCH/path/to/file.html
+          // raw: https://raw.githubusercontent.com/USER/REPO/refs/heads/BRANCH/path/to/file.html
           // api: https://api.github.com/repos/USER/REPO/contents/path/to/file.html?ref=BRANCH
-          const match = rawUrl.match(
-            /https:\/\/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)/
-          );
+          const parsed = parseGithubRaw(rawUrl);
 
-          if (match) {
-            const [, user, repo, branch, filePath] = match;
-            const apiUrl = `https://api.github.com/repos/${user}/${repo}/contents/${filePath}?ref=${branch}`;
+          if (parsed) {
+            const { user, repo, branch, filePath } = parsed;
+            const apiUrl = `https://api.github.com/repos/${user}/${repo}/contents/${encodeURI(filePath)}?ref=${encodeURIComponent(branch)}`;
 
             const resp = await fetch(apiUrl, {
               headers: { Accept: 'application/vnd.github.v3.raw' }
@@ -965,25 +984,19 @@ async function openViewer(title, matId) {
 
             if (resp.ok) {
               html = await resp.text();
-            } else if (resp.status === 403 || resp.status === 429) {
-              // Rate limited — fall back to jsDelivr CDN (great CORS support, CDN cached)
+            } else {
+              // API failed (rate limit, 404, etc.) — fall back to jsDelivr CDN
+              // (great CORS support, CDN cached)
               const cdnUrl = `https://cdn.jsdelivr.net/gh/${user}/${repo}@${branch}/${filePath}`;
               const cdnResp = await fetch(cdnUrl);
               if (cdnResp.ok) html = await cdnResp.text();
             }
           }
 
-          // Final fallback: jsDelivr directly
+          // Final fallback: fetch the raw URL directly
           if (!html) {
-            const match2 = rawUrl.match(
-              /https:\/\/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)/
-            );
-            if (match2) {
-              const [, user, repo, branch, filePath] = match2;
-              const cdnUrl = `https://cdn.jsdelivr.net/gh/${user}/${repo}@${branch}/${filePath}`;
-              const cdnResp = await fetch(cdnUrl);
-              if (cdnResp.ok) html = await cdnResp.text();
-            }
+            const directResp = await fetch(rawUrl);
+            if (directResp.ok) html = await directResp.text();
           }
         } else {
           // Non-GitHub URL — direct fetch
