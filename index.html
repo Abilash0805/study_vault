@@ -365,8 +365,8 @@ body.authed .sidebar{display:flex;}
               <div style="display:flex;flex-direction:column;gap:8px;">
                 <label id="upload-label">
                   <span style="font-size:1.2rem;">&#x1F4C4;</span>
-                  <span id="upload-label-text" style="font-size:.875rem;color:var(--muted);">Click to choose an HTML, JSX or TSX file&#x2026;</span>
-                  <input type="file" id="m-file" accept=".html,.jsx,.tsx,text/html" style="display:none;" onchange="onFileChosen(this)">
+                  <span id="upload-label-text" style="font-size:.875rem;color:var(--muted);">Click to choose an HTML, JSX, TSX or PDF file&#x2026;</span>
+                  <input type="file" id="m-file" accept=".html,.jsx,.tsx,.pdf,text/html,application/pdf" style="display:none;" onchange="onFileChosen(this)">
                 </label>
                 <button class="btn-primary" onclick="addMaterial()" style="width:100%;">Upload &amp; Add</button>
               </div>
@@ -376,7 +376,7 @@ body.authed .sidebar{display:flex;}
                 </div>
                 <p id="upload-progress-text" style="font-size:.78rem;color:var(--muted);margin-top:4px;">Reading file…</p>
               </div>
-              <p class="hint">HTML, JSX or TSX content is stored directly in Firestore (keep files under ~900 KB). JSX/TSX files must define a component named <strong>App</strong> — no imports needed, React &amp; ReactDOM are loaded automatically in the secure viewer.</p>
+              <p class="hint">HTML, JSX or TSX content is stored directly in Firestore (keep files under ~900 KB). JSX/TSX files must define a component named <strong>App</strong> — no imports needed, React &amp; ReactDOM are loaded automatically in the secure viewer. PDFs are stored the same way but must stay under <strong>700 KB</strong> — for bigger PDFs push them to GitHub and use the GitHub URL tab (no size limit).</p>
             </div>
 
             <!-- GITHUB URL pane -->
@@ -389,7 +389,7 @@ body.authed .sidebar{display:flex;}
                   onblur="this.style.borderStyle='dashed';this.style.borderColor='rgba(22,23,38,0.09)'">
                 <button class="btn-primary" onclick="addMaterialFromUrl()" style="width:100%;">Add GitHub URL</button>
               </div>
-              <p class="hint" style="margin-top:8px;">Paste a <strong>raw.githubusercontent.com</strong> link. Your repo must be <strong>public</strong>. Files ending in <strong>.jsx</strong>/<strong>.tsx</strong> are rendered automatically as React components. Files are fetched on open — no size limit.</p>
+              <p class="hint" style="margin-top:8px;">Paste a <strong>raw.githubusercontent.com</strong> link. Your repo must be <strong>public</strong>. Files ending in <strong>.jsx</strong>/<strong>.tsx</strong> are rendered automatically as React components, and <strong>.pdf</strong> files open in the built-in secure PDF reader. Files are fetched on open — no size limit.</p>
             </div>
           </div>
           <div class="sec-card">
@@ -647,8 +647,8 @@ async function loadDashboard(forceRefresh = false) {
       }
       allMatSnap.forEach(d => {
         if (!allowedIds.has(d.id)) return;
-        const m = d.data(); // skip htmlContent/jsxContent text — only keep lightweight fields
-        materials.push({ id: d.id, title: m.title, tag: m.tag, folderId: m.folderId || null, createdAt: m.createdAt, isJsx: !!m.jsxContent, url: m.url || null });
+        const m = d.data(); // skip htmlContent/jsxContent/pdfContent — only keep lightweight fields
+        materials.push({ id: d.id, title: m.title, tag: m.tag, folderId: m.folderId || null, createdAt: m.createdAt, isJsx: !!m.jsxContent, isPdf: !!m.pdfContent, url: m.url || null });
       });
 
       const visibleFolderIds = computeVisibleFolders(materials, foldersMap);
@@ -661,7 +661,7 @@ async function loadDashboard(forceRefresh = false) {
       allFolderSnap.forEach(d => { foldersMap[d.id] = d.data(); });
       allMatSnap.forEach(d => {
         const m = d.data();
-        materials.push({ id: d.id, title: m.title, tag: m.tag, folderId: m.folderId || null, createdAt: m.createdAt, isJsx: !!m.jsxContent, url: m.url || null });
+        materials.push({ id: d.id, title: m.title, tag: m.tag, folderId: m.folderId || null, createdAt: m.createdAt, isJsx: !!m.jsxContent, isPdf: !!m.pdfContent, url: m.url || null });
       });
       _dashCache = { foldersMap, materials, isAdmin: true, visibleFolderIds: null };
     }
@@ -707,9 +707,10 @@ function renderBreadcrumbs(foldersMap) {
 }
 
 function cardIcon(m) {
+  if (m.isPdf || (m.url && isPdfUrl(m.url))) return '📕';
   if (m.isJsx) return '⚛️';
   if (m.url && /\.(jsx|tsx)(\?|#|$)/i.test(m.url)) return '⚛️';
-  const icons = ['📘','📗','📙','📕','📓','📔','📒','🗒️'];
+  const icons = ['📘','📗','📙','📓','📔','📒','🗒️'];
   return icons[Math.abs(m.id.charCodeAt(0)) % icons.length];
 }
 
@@ -800,6 +801,7 @@ function renderLibrary() {
 const _viewerCache = {};
 
 function isJsxUrl(u) { return /\.(jsx|tsx)(\?|#|$)/i.test(u); }
+function isPdfUrl(u) { return /\.pdf(\?|#|$)/i.test(u); }
 
 // Wraps a plain React component source (no bundler) so it can run inside the
 // sandboxed iframe. Closing script tags are escaped ("<\/script>") so the HTML
@@ -883,6 +885,192 @@ function wrapJsx(source) {
   ].join('\n');
 }
 
+// Builds the sandboxed PDF viewer page. pdf.js is loaded from a CDN the same
+// way React/Babel are for JSX, and pages are drawn onto canvases — no text
+// layer, no browser PDF toolbar — so there's nothing to select, copy, print
+// or save. `opts` is { dataB64 } for PDFs stored in Firestore, or
+// { urls: [...] } for remote PDFs: the iframe fetches those itself (trying
+// each URL in order), so large files never have to fit in Firestore.
+function wrapPdf(opts) {
+  const cfg = JSON.stringify(opts).replace(/</g, '\\u003c');
+  return [
+    '<!DOCTYPE html><html><head><meta charset="UTF-8">',
+    '<meta name="viewport" content="width=device-width, initial-scale=1.0">',
+    '<style>',
+    'html,body{margin:0;min-height:100%;background:#3b3d44;font-family:sans-serif;}',
+    '#status{padding:2.5rem 1.5rem;color:#c7c9d1;text-align:center;font-size:.9rem;line-height:1.6;}',
+    '#status.pdf-error{color:#fca5a5;white-space:pre-wrap;word-break:break-word;}',
+    '.page{position:relative;margin:10px auto;background:#fff;box-shadow:0 2px 10px rgba(0,0,0,.4);}',
+    '.page canvas{position:absolute;top:0;left:0;width:100%;height:100%;display:block;}',
+    '#hud{position:fixed;bottom:14px;left:50%;transform:translateX(-50%);display:none;align-items:center;gap:2px;background:rgba(20,21,32,.9);border-radius:99px;padding:4px 6px;color:#e5e7f0;font-size:.8rem;box-shadow:0 4px 14px rgba(0,0,0,.35);user-select:none;-webkit-user-select:none;z-index:10;}',
+    '#hud button{background:none;border:none;color:#e5e7f0;font-size:1.05rem;width:30px;height:30px;border-radius:50%;cursor:pointer;line-height:1;padding:0;}',
+    '#hud button:hover{background:rgba(255,255,255,.12);}',
+    '#zoom-label{min-width:42px;text-align:center;}',
+    '#page-label{border-left:1px solid rgba(255,255,255,.25);margin-left:4px;padding:0 9px;white-space:nowrap;}',
+    '</style></head><body>',
+    '<div id="status">Loading PDF…</div>',
+    '<div id="pages"></div>',
+    '<div id="hud">',
+    '<button id="zoom-out" aria-label="Zoom out">−</button>',
+    '<span id="zoom-label">100%</span>',
+    '<button id="zoom-in" aria-label="Zoom in">+</button>',
+    '<span id="page-label">– / –</span>',
+    '</div>',
+    '<script>var __PDF_CFG = ' + cfg + ';<\/script>',
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous"><\/script>',
+    '<script>',
+    '(function () {',
+    '  var statusEl = document.getElementById("status");',
+    '  var pagesEl  = document.getElementById("pages");',
+    '  function showErr(msg) {',
+    '    document.getElementById("hud").style.display = "none";',
+    '    statusEl.style.display = "block";',
+    '    statusEl.classList.add("pdf-error");',
+    '    statusEl.textContent = "Failed to load PDF\\n\\n" + msg;',
+    '  }',
+    '  if (!window.pdfjsLib) { showErr("The PDF engine could not be loaded — check your network/ad-blocker."); return; }',
+    '  pdfjsLib.GlobalWorkerOptions.workerSrc = "https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.worker.min.js";',
+    '',
+    '  var ZOOMS = [0.5, 0.65, 0.8, 1, 1.25, 1.5, 2, 2.5, 3];',
+    '  var zoomIdx = 3, pdf = null, holders = [], defaultRatio = Math.SQRT2;',
+    '  // renderSeq invalidates in-flight renders on zoom/resize; queue keeps',
+    '  // page renders sequential so memory stays sane on long documents.',
+    '  var renderSeq = 0, queue = Promise.resolve();',
+    '',
+    '  function b64ToBytes(b64) {',
+    '    var bin = atob(b64), out = new Uint8Array(bin.length);',
+    '    for (var i = 0; i < bin.length; i++) out[i] = bin.charCodeAt(i);',
+    '    return out;',
+    '  }',
+    '  function openDoc() {',
+    '    if (__PDF_CFG.dataB64) return pdfjsLib.getDocument({ data: b64ToBytes(__PDF_CFG.dataB64) }).promise;',
+    '    var urls = __PDF_CFG.urls || [], i = 0, errs = [];',
+    '    function next() {',
+    '      if (i >= urls.length) return Promise.reject(new Error(errs.join("\\n") || "No PDF source configured."));',
+    '      var u = urls[i++];',
+    '      var init = u.indexOf("api.github.com") > -1 ? { headers: { Accept: "application/vnd.github.v3.raw" } } : undefined;',
+    '      return fetch(u, init).then(function (r) {',
+    '        if (!r.ok) throw new Error("HTTP " + r.status);',
+    '        return r.arrayBuffer();',
+    '      }).then(function (buf) {',
+    '        return pdfjsLib.getDocument({ data: new Uint8Array(buf) }).promise;',
+    '      }).catch(function (e) { errs.push(e && e.message ? e.message : String(e)); return next(); });',
+    '    }',
+    '    return next();',
+    '  }',
+    '',
+    '  function cssWidth() { return Math.round(Math.min(document.documentElement.clientWidth - 20, 860) * ZOOMS[zoomIdx]); }',
+    '  function layout() {',
+    '    var w = cssWidth();',
+    '    holders.forEach(function (h) {',
+    '      var ratio = parseFloat(h.dataset.ratio) || defaultRatio;',
+    '      h.style.width = w + "px";',
+    '      h.style.height = Math.round(w * ratio) + "px";',
+    '    });',
+    '  }',
+    '',
+    '  function renderPage(h) {',
+    '    var seq = renderSeq, num = parseInt(h.dataset.page, 10);',
+    '    h.dataset.queued = seq;',
+    '    queue = queue.then(function () {',
+    '      if (seq !== renderSeq) return;',
+    '      return pdf.getPage(num).then(function (page) {',
+    '        if (seq !== renderSeq) return;',
+    '        var vp1 = page.getViewport({ scale: 1 });',
+    '        h.dataset.ratio = vp1.height / vp1.width;',
+    '        var w = cssWidth(), hpx = Math.round(w * (vp1.height / vp1.width));',
+    '        h.style.width = w + "px";',
+    '        h.style.height = hpx + "px";',
+    '        // cap canvas pixels (~12M) — iOS Safari silently drops huge canvases',
+    '        var px = Math.min(Math.min(window.devicePixelRatio || 1, 2), Math.sqrt(12e6 / (w * hpx)));',
+    '        var canvas = document.createElement("canvas");',
+    '        canvas.width = Math.max(1, Math.floor(w * px));',
+    '        canvas.height = Math.max(1, Math.floor(hpx * px));',
+    '        var vp = page.getViewport({ scale: canvas.width / vp1.width });',
+    '        return page.render({ canvasContext: canvas.getContext("2d"), viewport: vp }).promise.then(function () {',
+    '          if (seq !== renderSeq) return;',
+    '          h.innerHTML = "";',
+    '          h.appendChild(canvas);',
+    '          h.dataset.done = seq;',
+    '        });',
+    '      });',
+    '    }).catch(function (e) { console.error("Page " + num, e); });',
+    '  }',
+    '',
+    '  function renderInView() {',
+    '    var vh = window.innerHeight, margin = vh * 1.5;',
+    '    holders.forEach(function (h) {',
+    '      var r = h.getBoundingClientRect();',
+    '      if (r.bottom < -margin || r.top > vh + margin) return;',
+    '      if (h.dataset.done == renderSeq || h.dataset.queued == renderSeq) return;',
+    '      renderPage(h);',
+    '    });',
+    '    updatePageLabel();',
+    '  }',
+    '  function updatePageLabel() {',
+    '    if (!holders.length) return;',
+    '    var mid = window.innerHeight / 2, current = 1;',
+    '    for (var i = 0; i < holders.length; i++) {',
+    '      if (holders[i].getBoundingClientRect().top > mid) break;',
+    '      current = i + 1;',
+    '    }',
+    '    document.getElementById("page-label").textContent = current + " / " + holders.length;',
+    '  }',
+    '',
+    '  function setZoom(idx) {',
+    '    idx = Math.max(0, Math.min(ZOOMS.length - 1, idx));',
+    '    if (idx === zoomIdx) return;',
+    '    var se = document.scrollingElement || document.documentElement;',
+    '    var frac = se.scrollHeight > 0 ? se.scrollTop / se.scrollHeight : 0;',
+    '    zoomIdx = idx;',
+    '    // old canvases stay visible (CSS-scaled) until sharp replacements land',
+    '    renderSeq++;',
+    '    document.getElementById("zoom-label").textContent = Math.round(ZOOMS[zoomIdx] * 100) + "%";',
+    '    layout();',
+    '    se.scrollTop = frac * se.scrollHeight;',
+    '    renderInView();',
+    '  }',
+    '',
+    '  openDoc().then(function (doc) {',
+    '    pdf = doc;',
+    '    return pdf.getPage(1);',
+    '  }).then(function (p1) {',
+    '    var vp = p1.getViewport({ scale: 1 });',
+    '    defaultRatio = vp.height / vp.width;',
+    '    for (var i = 1; i <= pdf.numPages; i++) {',
+    '      var h = document.createElement("div");',
+    '      h.className = "page";',
+    '      h.dataset.page = i;',
+    '      pagesEl.appendChild(h);',
+    '      holders.push(h);',
+    '    }',
+    '    statusEl.style.display = "none";',
+    '    document.getElementById("hud").style.display = "flex";',
+    '    layout();',
+    '    renderInView();',
+    '  }).catch(function (e) {',
+    '    showErr(e && e.name === "PasswordException" ? "This PDF is password-protected. Remove the password and upload it again." : (e && e.message ? e.message : String(e)));',
+    '  });',
+    '',
+    '  var ticking = false;',
+    '  window.addEventListener("scroll", function () {',
+    '    if (ticking) return;',
+    '    ticking = true;',
+    '    requestAnimationFrame(function () { ticking = false; renderInView(); });',
+    '  }, { passive: true });',
+    '  var resizeTimer = null;',
+    '  window.addEventListener("resize", function () {',
+    '    clearTimeout(resizeTimer);',
+    '    resizeTimer = setTimeout(function () { renderSeq++; layout(); renderInView(); }, 200);',
+    '  });',
+    '  document.getElementById("zoom-in").addEventListener("click", function () { setZoom(zoomIdx + 1); });',
+    '  document.getElementById("zoom-out").addEventListener("click", function () { setZoom(zoomIdx - 1); });',
+    '})();',
+    '<\/script>',
+    '</body></html>'
+  ].join('\n');
+}
+
 async function openViewer(title, matId) {
   document.getElementById('viewer-title').textContent = title;
   const frame = document.getElementById('content-frame');
@@ -940,8 +1128,34 @@ async function openViewer(title, matId) {
       return;
     }
 
+    // Case 1c: PDF stored inline as base64 — rendered by the sandboxed
+    // pdf.js viewer
+    if (data.pdfContent) {
+      const wrapped = wrapPdf({ dataB64: data.pdfContent });
+      _viewerCache[matId] = wrapped;
+      frame.onload = secure;
+      frame.srcdoc = wrapped;
+      return;
+    }
+
     // Case 2: GitHub raw URL — use GitHub Contents API (proper CORS support)
     if (data.url) {
+      // Case 2a: PDF by URL — hand the URL(s) to the sandboxed pdf.js viewer,
+      // which fetches the bytes itself (Contents API first, then jsDelivr),
+      // so large PDFs never have to squeeze into Firestore.
+      if (isPdfUrl(data.url)) {
+        const gh = data.url.match(/https:\/\/raw\.githubusercontent\.com\/([^\/]+)\/([^\/]+)\/([^\/]+)\/(.+)/);
+        const urls = gh
+          ? [`https://api.github.com/repos/${gh[1]}/${gh[2]}/contents/${gh[4]}?ref=${gh[3]}`,
+             `https://cdn.jsdelivr.net/gh/${gh[1]}/${gh[2]}@${gh[3]}/${gh[4]}`]
+          : [data.url];
+        const wrapped = wrapPdf({ urls });
+        _viewerCache[matId] = wrapped;
+        frame.onload = secure;
+        frame.srcdoc = wrapped;
+        return;
+      }
+
       frame.srcdoc = '<div style="font-family:sans-serif;display:flex;align-items:center;justify-content:center;height:100vh;color:#8587a0;background:#f6f7fb;">Fetching content…</div>';
       try {
         let html = null;
@@ -1321,7 +1535,7 @@ window.addMaterialFromUrl = async () => {
 
 window.onFileChosen = input => {
   document.getElementById('upload-label-text').textContent =
-    input.files[0] ? input.files[0].name : 'Click to choose an HTML, JSX or TSX file…';
+    input.files[0] ? input.files[0].name : 'Click to choose an HTML, JSX, TSX or PDF file…';
 };
 
 window.addMaterial = async () => {
@@ -1334,8 +1548,12 @@ window.addMaterial = async () => {
   const file      = fileInput.files[0];
   if (!file) { toast('Please choose a file', 'err'); return; }
   const ext = file.name.toLowerCase().split('.').pop();
-  if (!['html', 'jsx', 'tsx'].includes(ext)) { toast('Only .html, .jsx or .tsx files are allowed', 'err'); return; }
-  if (file.size > 900 * 1024) { toast('File too large — keep it under 900 KB', 'err'); return; }
+  if (!['html', 'jsx', 'tsx', 'pdf'].includes(ext)) { toast('Only .html, .jsx, .tsx or .pdf files are allowed', 'err'); return; }
+  const isPdf = ext === 'pdf';
+  // Firestore caps documents at 1 MiB and base64 inflates binaries by ~33%,
+  // so PDFs get a lower raw-size limit than text uploads.
+  if (isPdf && file.size > 700 * 1024) { toast('PDF too large — keep it under 700 KB, or push it to GitHub and use the GitHub URL tab', 'err'); return; }
+  if (!isPdf && file.size > 900 * 1024) { toast('File too large — keep it under 900 KB', 'err'); return; }
 
   const progressWrap = document.getElementById('upload-progress-wrap');
   const progressBar  = document.getElementById('upload-progress-bar');
@@ -1349,14 +1567,16 @@ window.addMaterial = async () => {
       const reader   = new FileReader();
       reader.onload  = e => resolve(e.target.result);
       reader.onerror = () => reject(new Error('Could not read file'));
-      reader.readAsText(file);
+      if (isPdf) reader.readAsDataURL(file); // binary → base64 data URL
+      else reader.readAsText(file);
     });
 
     progressBar.style.width  = '70%';
     progressText.textContent = 'Saving to Firestore…';
 
     const payload = { title, tag, folderId, createdAt: Date.now() };
-    if (ext === 'html') { payload.htmlContent = text; payload.sourceType = 'inline'; }
+    if (isPdf) { payload.pdfContent = text.slice(text.indexOf(',') + 1); payload.sourceType = 'inline-pdf'; }
+    else if (ext === 'html') { payload.htmlContent = text; payload.sourceType = 'inline'; }
     else { payload.jsxContent = text; payload.sourceType = 'inline-jsx'; }
 
     await addDoc(collection(db, 'materials'), payload);
@@ -1364,7 +1584,7 @@ window.addMaterial = async () => {
     document.getElementById('m-title').value = '';
     document.getElementById('m-tag').value   = '';
     fileInput.value = '';
-    document.getElementById('upload-label-text').textContent = 'Click to choose an HTML, JSX or TSX file…';
+    document.getElementById('upload-label-text').textContent = 'Click to choose an HTML, JSX, TSX or PDF file…';
     progressWrap.style.display = 'none';
     progressBar.style.width    = '0%';
     toast('Material added!', 'ok');
@@ -1406,11 +1626,16 @@ async function loadMaterialsList(foldersMap) {
     const m       = d.data();
     const item    = document.createElement('div');
     item.className = 'list-item';
-    const sizeKb  = m.htmlContent ? Math.round(m.htmlContent.length / 1024) : m.jsxContent ? Math.round(m.jsxContent.length / 1024) : 0;
+    const sizeKb  = m.htmlContent ? Math.round(m.htmlContent.length / 1024)
+                  : m.jsxContent  ? Math.round(m.jsxContent.length / 1024)
+                  : m.pdfContent  ? Math.round(m.pdfContent.length * 0.75 / 1024) // base64 → raw bytes
+                  : 0;
     const badge = m.htmlContent
       ? `<span style="background:#ede9fe;color:#5b21b6;border:1px solid #ddd6fe;border-radius:4px;padding:1px 7px;font-size:.7rem;font-weight:500;margin-left:6px;">📄 Inline HTML</span>`
       : m.jsxContent
       ? `<span style="background:#e0f2fe;color:#0369a1;border:1px solid #bae6fd;border-radius:4px;padding:1px 7px;font-size:.7rem;font-weight:500;margin-left:6px;">⚛️ Inline JSX</span>`
+      : m.pdfContent
+      ? `<span style="background:#fef2f2;color:#b91c1c;border:1px solid #fecaca;border-radius:4px;padding:1px 7px;font-size:.7rem;font-weight:500;margin-left:6px;">📕 Inline PDF</span>`
       : m.url
       ? `<span style="background:#f0fdf4;color:#15803d;border:1px solid #bbf7d0;border-radius:4px;padding:1px 7px;font-size:.7rem;font-weight:500;margin-left:6px;">🐙 GitHub</span>`
       : `<span style="background:#fef3c7;color:#92400e;border:1px solid #fde68a;border-radius:4px;padding:1px 7px;font-size:.7rem;font-weight:500;margin-left:6px;">⚠️ No content</span>`;
@@ -1488,7 +1713,7 @@ DATA STRUCTURE:
   students/{email}  → { email, name, files: ["matId1","matId2"], addedAt }
   folders/{id}       → { name, parentId: string|null, createdAt }
   materials/{id}    → { title, tag, folderId: string|null, createdAt,
-                         htmlContent | jsxContent | url, sourceType }
+                         htmlContent | jsxContent | pdfContent | url, sourceType }
 
 HOW ACCESS WORKS:
   - You add a student (just their Gmail)
@@ -1505,6 +1730,17 @@ JSX / TSX MATERIALS:
   - The file should define a component named "App" (imports/exports are
     stripped automatically since there's no bundler in the sandboxed viewer).
   - GitHub Raw URLs ending in .jsx/.tsx are detected and rendered the same way.
+
+PDF MATERIALS:
+  - Upload a .pdf the same way — it's stored base64-encoded in Firestore
+    (field "pdfContent"). Firestore documents max out at 1 MiB, so uploaded
+    PDFs must stay under ~700 KB.
+  - Bigger PDFs: push them to a public GitHub repo and add the
+    raw.githubusercontent.com link — the viewer fetches them on open,
+    so there's no size limit.
+  - Rendered with pdf.js (loaded from a CDN) onto canvases inside the
+    sandboxed viewer: no text layer, no browser PDF toolbar, so no
+    select/copy/print/download buttons.
 
 HOSTING (free options):
   - GitHub Pages, Netlify, Firebase Hosting

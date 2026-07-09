@@ -1,4 +1,4 @@
-const CACHE = 'studyvault-v2';
+const CACHE = 'studyvault-v3';
 const SHELL = [
   '/',
   '/index.html',
@@ -26,14 +26,18 @@ self.addEventListener('fetch', e => {
   const url = e.request.url;
 
   // Always go network for Firebase (auth, Firestore, functions) and the
-  // React/Babel CDN scripts used to render uploaded JSX/TSX materials.
+  // CDN scripts used by the secure viewer (React/Babel for JSX, pdf.js for
+  // PDFs) plus the hosts remote PDFs are fetched from.
   if (
     url.includes('firebaseapp.com') ||
     url.includes('googleapis.com') ||
     url.includes('gstatic.com') ||
     url.includes('firestore.googleapis.com') ||
     url.includes('identitytoolkit') ||
-    url.includes('unpkg.com')
+    url.includes('unpkg.com') ||
+    url.includes('cdnjs.cloudflare.com') ||
+    url.includes('cdn.jsdelivr.net') ||
+    url.includes('api.github.com')
   ) {
     return; // let browser handle normally
   }
