@@ -11,7 +11,8 @@ server to run.
 | `index.html` | public | Landing page + Google sign-in. Signed-in users are redirected on. |
 | `store.html` | signed in | Catalogue of materials on sale, with subject filters and search. |
 | `cart.html` | signed in | Cart contents and order total. |
-| `checkout.html` | signed in | Order summary. Payment is not wired up yet (Stage 3). |
+| `checkout.html` | signed in | Places the order, shows the UPI QR / link, takes the payment reference. |
+| `orders.html` | signed in | The student's own orders and payment status. |
 | `library.html` | student / admin | "My Materials" — folders, breadcrumbs, grid. |
 | `viewer.html?id=<id>` | student / admin | Secure viewer (HTML, JSX/TSX, PDF). |
 | `admin.html` | admin only | Students, access, folders, materials, pricing, maintenance. |
@@ -77,6 +78,60 @@ privileged read and write is checked server-side.
 - `.jsx` / `.tsx` must define a component named `App` (or use a default
   export). React, ReactDOM and Babel load in the sandboxed viewer; there is no
   bundler, so imports are stripped.
+
+## Payments
+
+There is no payment gateway. UPI cannot call back into a static site, so
+**payments are confirmed by hand**: the student pays, submits the reference
+number their UPI app gave them, and you approve it in Admin → Payments, which
+grants access and writes a ledger entry.
+
+Set your UPI ID in **Admin → Payments → UPI settings**. It is stored in
+`settings/payment`, not in the code, so you can change it without a redeploy.
+
+```
+settings/payment    { upiVpa, payeeName, enabled, updatedAt }
+orders/{id}         { orderNo, txnRef, email, items[], totalPaise, status,
+                      utr, createdAt, paidAt, confirmedBy, … }
+ledger/{id}         { orderId, orderNo, email, type, amountPaise, note, at }
+```
+
+**Order lifecycle**
+
+```
+pending_payment ──submit reference──> awaiting_confirmation
+      │                                      │
+      │                              approve │ reject
+   cancel/expire                             ▼
+      ▼                                    paid ──refund──> refunded
+ cancelled / expired                     rejected
+```
+
+**Each order carries its own reference.** The QR and `upi://` link embed the
+exact amount and a `tr=` reference derived from the order number, so payments
+arrive already identified. That is the difference between reconciliation taking
+seconds and being guesswork over timestamps.
+
+**Checks shown before you approve** — none of them block you, they just surface
+things worth a second look:
+
+- the same UPI reference already used on another order (one payment, one order)
+- the order total not matching current prices, or not matching its own line items
+- orders older than 24 hours
+
+**Refunds** record the reversal and revoke access, but only for materials no
+*other* paid order also covers — refunding one order can't strip something the
+student bought separately. Money is **not** moved for you; send it back yourself.
+
+**Swapping in a real gateway later.** Everything funnels through
+`confirmPayment()` in `assets/js/orders.js`. Manual approval calls it with
+`method:'manual'`; a gateway webhook would call the same function with
+`method:'gateway'` and its own reference, and nothing else would change.
+
+> A personal UPI ID is not a merchant account. Collecting business payments on
+> one runs against NPCI merchant rules and most apps' terms, has low inbound
+> limits, and accounts do get frozen — which would strand paying students. The
+> UPI ID is configuration precisely so it is quick to change.
 
 ## A note on "no download"
 

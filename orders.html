@@ -1,0 +1,155 @@
+<!DOCTYPE html>
+<html lang="en" class="booting">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>My Orders — StudyVault</title>
+<meta name="robots" content="noindex">
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6d5ef9">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/app.css">
+
+<style>
+  .order-head{
+    display:flex;align-items:center;gap:10px;flex-wrap:wrap;
+    padding-bottom:12px;border-bottom:1px solid var(--border);margin-bottom:12px;
+  }
+  .order-no{font-family:ui-monospace,Menlo,Consolas,monospace;font-size:.85rem;font-weight:500;}
+  .order-when{font-size:.76rem;color:var(--muted);}
+  .order-total{margin-left:auto;font-weight:500;}
+  .order-item{
+    display:flex;justify-content:space-between;gap:12px;
+    font-size:.84rem;padding:5px 0;color:var(--ink2);
+  }
+  .order-note{
+    margin-top:12px;padding:11px 13px;border-radius:var(--radius-xs);
+    font-size:.8rem;line-height:1.6;
+  }
+  .note-info{background:var(--info-soft);color:var(--info-ink);}
+  .note-warn{background:var(--warn-soft);color:#7c4a03;}
+  .note-bad{background:var(--danger-soft);color:#b91c1c;}
+  .note-good{background:var(--success-soft);color:var(--success-ink);}
+</style>
+</head>
+<body>
+
+<div id="boot"><div class="spinner"></div><span class="boot-text">Loading your orders…</span></div>
+
+<div id="site-header"></div>
+
+<main class="page page-narrow">
+  <div class="page-head">
+    <h1>My Orders</h1>
+    <p>Every purchase and its payment status.</p>
+  </div>
+  <div id="content"></div>
+</main>
+
+<script type="module">
+import { requireAuth, doSignOut } from './assets/js/session.js';
+import { mountChrome, ready, el, fill, fmtMoney, fmtDateTime, emptyState, setCartCount, toast } from './assets/js/ui.js';
+import * as cart from './assets/js/cart.js';
+import { listMyOrders, STATUS, STATUS_META, isExpired } from './assets/js/orders.js';
+
+const { user, isAdmin } = await requireAuth();
+mountChrome({ active: 'orders', user, isAdmin, onSignOut: () => doSignOut() });
+cart.onChange(setCartCount);
+
+const contentEl = document.getElementById('content');
+
+function note(order) {
+  switch (order.status) {
+    case STATUS.PENDING:
+      return isExpired(order)
+        ? el('div', { class: 'order-note note-warn' },
+            'This order expired before payment was confirmed. Place a new order if you still want these materials.')
+        : el('div', { class: 'order-note note-info' },
+            'Waiting for payment. Open the order to pay, or cancel it.');
+    case STATUS.AWAITING:
+      return el('div', { class: 'order-note note-info' },
+        'Your payment reference has been submitted and is being checked. ' +
+        'Access appears here and in My Materials once confirmed.');
+    case STATUS.PAID:
+      return el('div', { class: 'order-note note-good' },
+        '✓ Payment confirmed. These materials are in your library.');
+    case STATUS.REJECTED:
+      return el('div', { class: 'order-note note-bad' },
+        (order.rejectedReason || 'The payment could not be verified.') +
+        ' If you believe this is wrong, contact your instructor with your UPI reference.');
+    case STATUS.REFUNDED:
+      return el('div', { class: 'order-note note-warn' },
+        'This order was refunded' + (order.refundReason ? ': ' + order.refundReason : '.'));
+    default:
+      return null;
+  }
+}
+
+function card(order) {
+  const meta = STATUS_META[order.status] || { label: order.status, badge: 'badge-grey' };
+  const expired = isExpired(order);
+
+  const box = el('div', { class: 'card' },
+    el('div', { class: 'order-head' },
+      el('span', { class: 'order-no' }, order.orderNo),
+      el('span', { class: 'badge ' + (expired ? 'badge-grey' : meta.badge) },
+        expired ? 'Expired' : meta.label),
+      el('span', { class: 'order-when' }, fmtDateTime(order.createdAt)),
+      el('span', { class: 'order-total' }, fmtMoney(order.totalPaise))
+    ),
+    ...order.items.map(i => el('div', { class: 'order-item' },
+      el('span', { class: 'truncate' }, i.title),
+      el('span', {}, fmtMoney(i.pricePaise))))
+  );
+
+  const n = note(order);
+  if (n) box.append(n);
+
+  if (order.utr) {
+    box.append(el('div', { class: 'order-item', style: 'margin-top:8px' },
+      el('span', { class: 'muted' }, 'UPI reference'),
+      el('span', { class: 'mono' }, order.utr)));
+  }
+
+  if (order.status === STATUS.PENDING && !expired) {
+    box.append(el('a', {
+      class: 'btn btn-primary btn-sm', style: 'margin-top:12px',
+      href: `checkout.html?order=${encodeURIComponent(order.id)}`
+    }, 'Complete payment'));
+  }
+
+  if (order.status === STATUS.PAID) {
+    box.append(el('div', { class: 'list-actions', style: 'margin-top:12px' },
+      ...order.items.map(i => el('a', {
+        class: 'btn btn-secondary btn-sm',
+        href: `viewer.html?id=${encodeURIComponent(i.id)}`
+      }, 'Open ' + i.title))));
+  }
+
+  return box;
+}
+
+try {
+  const orders = await listMyOrders(user.email);
+  if (!orders.length) {
+    fill(contentEl, emptyState('🧾', 'No orders yet', 'Anything you buy will show up here.'));
+    contentEl.append(el('div', { style: 'text-align:center' },
+      el('a', { class: 'btn btn-primary', href: 'store.html' }, 'Browse the store')));
+  } else {
+    fill(contentEl, ...orders.map(card));
+  }
+} catch (e) {
+  console.error('orders:', e);
+  fill(contentEl, emptyState('⚠️', 'Could not load your orders', e.message));
+} finally {
+  ready();
+}
+</script>
+</body>
+</html>

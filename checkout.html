@@ -15,6 +15,50 @@
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/app.css">
+
+<style>
+  .steps{display:flex;gap:8px;margin-bottom:24px;flex-wrap:wrap;}
+  .step{
+    display:flex;align-items:center;gap:8px;font-size:.8rem;color:var(--muted);
+    background:var(--card);border:1px solid var(--border);border-radius:99px;padding:6px 14px;
+  }
+  .step.active{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-ink);font-weight:500;}
+  .step.done{background:var(--success-soft);border-color:#a7f3d0;color:var(--success-ink);}
+  .step-n{
+    width:19px;height:19px;border-radius:50%;background:currentColor;color:var(--card);
+    display:flex;align-items:center;justify-content:center;font-size:.68rem;flex-shrink:0;
+  }
+  .pay-grid{display:grid;gap:20px;grid-template-columns:1fr;align-items:start;}
+  @media(min-width:860px){.pay-grid{grid-template-columns:300px 1fr;}}
+  .qr-box{
+    background:var(--card);border:1px solid var(--border);border-radius:var(--radius);
+    padding:20px;text-align:center;
+  }
+  .qr-holder{
+    width:212px;height:212px;margin:0 auto 14px;display:flex;align-items:center;
+    justify-content:center;background:#fff;border:1px solid var(--border);border-radius:12px;padding:8px;
+  }
+  .qr-holder img,.qr-holder canvas{width:100%;height:100%;display:block;image-rendering:pixelated;}
+  .qr-fallback{font-size:.78rem;color:var(--muted);line-height:1.6;padding:16px;}
+  .paydetail{
+    display:flex;justify-content:space-between;gap:12px;
+    padding:9px 0;border-bottom:1px solid var(--border);font-size:.85rem;
+  }
+  .paydetail:last-child{border-bottom:none;}
+  .paydetail dt{color:var(--muted);}
+  .paydetail dd{font-weight:500;color:var(--ink);text-align:right;word-break:break-all;}
+  .copy-btn{
+    background:none;border:1px solid var(--border);border-radius:6px;
+    font-family:inherit;font-size:.7rem;color:var(--ink2);cursor:pointer;
+    padding:2px 7px;margin-left:6px;
+  }
+  .copy-btn:hover{background:var(--sunken);}
+  .amount-big{font-size:1.9rem;font-weight:500;color:var(--ink);margin:2px 0 4px;}
+  .warn-box{
+    background:var(--warn-soft);border:1px solid #fde68a;color:#7c4a03;
+    border-radius:var(--radius-sm);padding:14px 16px;font-size:.84rem;line-height:1.65;
+  }
+</style>
 </head>
 <body>
 
@@ -25,64 +69,271 @@
 <main class="page page-narrow">
   <div class="page-head">
     <h1>Checkout</h1>
-    <p>Review your order.</p>
+    <p id="sub">Review your order, then pay by UPI.</p>
   </div>
+
+  <div class="steps" id="steps"></div>
   <div id="content"></div>
 </main>
 
+<script src="https://cdnjs.cloudflare.com/ajax/libs/qrcode-generator/1.4.4/qrcode.min.js"></script>
 <script type="module">
 import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
 import { listMaterials } from './assets/js/content.js';
-import { mountChrome, ready, el, fill, fmtMoney, emptyState, setCartCount } from './assets/js/ui.js';
+import { db, doc, getDoc } from './assets/js/firebase.js';
+import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
+import {
+  STATUS, createOrder, submitUtr, cancelOrder, buildUpiUri,
+  loadPaymentSettings, isPlausibleUtr, paiseToAmount
+} from './assets/js/orders.js';
 
 const { user, isAdmin, student } = await requireAuth();
 mountChrome({ active: 'cart', user, isAdmin, onSignOut: () => doSignOut() });
 cart.onChange(setCartCount);
 
 const contentEl = document.getElementById('content');
+const stepsEl = document.getElementById('steps');
 
-try {
-  const all = await listMaterials();
-  const byId = Object.fromEntries(all.map(m => [m.id, m]));
-  const owned = grantedIds(isAdmin, student) || new Set(all.map(m => m.id));
+let byId = {}, owned = new Set(), settings = null;
 
-  const sellable = new Set(
-    all.filter(m => m.published && m.pricePaise !== null && !owned.has(m.id)).map(m => m.id)
-  );
-  cart.prune(sellable);
+function steps(active) {
+  const list = [['Review', 1], ['Pay', 2], ['Confirm', 3]];
+  fill(stepsEl, ...list.map(([label, n]) => el('div', {
+    class: 'step' + (n === active ? ' active' : n < active ? ' done' : '')
+  }, el('span', { class: 'step-n' }, n < active ? '✓' : String(n)), label)));
+}
 
+function copyBtn(text) {
+  return el('button', {
+    class: 'copy-btn',
+    onclick: async (e) => {
+      try {
+        await navigator.clipboard.writeText(text);
+        toast('Copied', 'ok');
+      } catch (_) { toast('Could not copy — select it manually', 'err'); }
+    }
+  }, 'Copy');
+}
+
+/* ── step 1: review ───────────────────────────────────── */
+function renderReview() {
+  steps(1);
   const ids = cart.items();
+
   if (!ids.length) {
     fill(contentEl, emptyState('🛒', 'Your cart is empty', 'Add something from the store first.'));
     contentEl.append(el('div', { style: 'text-align:center' },
       el('a', { class: 'btn btn-primary', href: 'store.html' }, 'Go to the store')));
-  } else {
-    const lines = ids.map(id => byId[id]).filter(Boolean);
-    fill(contentEl,
-      el('div', { class: 'card' },
-        el('h2', {}, 'Order summary'),
-        ...lines.map(m => el('div', { class: 'summary-row' },
-          el('span', { class: 'truncate' }, m.title),
-          el('span', {}, m.pricePaise ? fmtMoney(m.pricePaise) : 'Free')
-        )),
-        el('div', { class: 'summary-total' },
-          el('span', {}, 'Total'),
-          el('span', {}, fmtMoney(cart.total(byId, ids)))
-        )
+    return;
+  }
+
+  const lines = ids.map(id => byId[id]).filter(Boolean);
+  const total = cart.total(byId, ids);
+
+  const placeBtn = el('button', { class: 'btn btn-primary btn-block' }, 'Place order & pay by UPI');
+  placeBtn.addEventListener('click', async () => {
+    placeBtn.disabled = true;
+    placeBtn.textContent = 'Creating order…';
+    try {
+      const order = await createOrder({
+        email: user.email, ids, byId, ownedIds: owned
+      });
+      cart.clear();
+      history.replaceState({}, '', `checkout.html?order=${order.id}`);
+      renderPay(order);
+    } catch (e) {
+      console.error(e);
+      placeBtn.disabled = false;
+      placeBtn.textContent = 'Place order & pay by UPI';
+      toast(e.message || 'Could not create the order', 'err');
+    }
+  });
+
+  fill(contentEl,
+    el('div', { class: 'card' },
+      el('h2', {}, 'Order summary'),
+      ...lines.map(m => el('div', { class: 'summary-row' },
+        el('span', { class: 'truncate' }, m.title),
+        el('span', {}, m.pricePaise ? fmtMoney(m.pricePaise) : 'Free'))),
+      el('div', { class: 'summary-total' },
+        el('span', {}, 'Total'), el('span', {}, fmtMoney(total)))
+    ),
+    settings?.upiVpa && settings?.enabled !== false
+      ? el('div', { class: 'card' },
+          el('h2', {}, 'Payment method'),
+          el('p', { class: 'card-sub' },
+            'You\'ll get a UPI QR code and a payment link. Access is granted once your payment is confirmed.'),
+          placeBtn)
+      : el('div', { class: 'card' },
+          el('h2', {}, 'Payment unavailable'),
+          el('p', { class: 'card-sub' },
+            'UPI payment has not been set up yet. Please contact your instructor to get access.'),
+          el('a', { class: 'btn btn-secondary', href: 'cart.html' }, '← Back to cart'))
+  );
+}
+
+/* ── step 2: pay ──────────────────────────────────────── */
+function renderPay(order) {
+  steps(2);
+  document.getElementById('sub').textContent =
+    'Pay the exact amount, then enter your UPI reference number below.';
+
+  const uri = buildUpiUri({
+    vpa: settings.upiVpa,
+    payeeName: settings.payeeName,
+    amountPaise: order.totalPaise,
+    txnRef: order.txnRef,
+    note: 'StudyVault ' + order.orderNo
+  });
+
+  const qrHolder = el('div', { class: 'qr-holder' },
+    el('span', { class: 'qr-fallback' }, 'Generating QR…'));
+
+  // Rendered after insertion so the library (if it loaded) has a live node.
+  setTimeout(() => {
+    try {
+      if (typeof window.qrcode !== 'function') throw new Error('no qr lib');
+      const qr = window.qrcode(0, 'M');
+      qr.addData(uri);
+      qr.make();
+      qrHolder.innerHTML = qr.createImgTag(6, 0);
+      const img = qrHolder.querySelector('img');
+      if (img) { img.alt = 'UPI QR code'; img.style.width = '100%'; img.style.height = '100%'; }
+    } catch (_) {
+      fill(qrHolder, el('span', { class: 'qr-fallback' },
+        'QR could not be generated here. Use the "Open UPI app" button, or pay ' +
+        settings.upiVpa + ' manually.'));
+    }
+  }, 0);
+
+  const utrInput = el('input', {
+    class: 'input', type: 'text', inputmode: 'numeric',
+    placeholder: 'e.g. 412345678901', maxlength: '24'
+  });
+
+  const submitBtn = el('button', { class: 'btn btn-primary btn-block' }, 'I have paid — submit reference');
+  submitBtn.addEventListener('click', async () => {
+    const v = utrInput.value;
+    if (!isPlausibleUtr(v)) {
+      toast('Enter the UPI reference / UTR number from your payment app', 'err');
+      utrInput.focus();
+      return;
+    }
+    submitBtn.disabled = true;
+    submitBtn.textContent = 'Submitting…';
+    try {
+      await submitUtr(order.id, v);
+      renderDone(order);
+    } catch (e) {
+      submitBtn.disabled = false;
+      submitBtn.textContent = 'I have paid — submit reference';
+      toast(e.message || 'Could not submit', 'err');
+    }
+  });
+
+  fill(contentEl,
+    el('div', { class: 'pay-grid' },
+      el('div', { class: 'qr-box' },
+        qrHolder,
+        el('div', { class: 'muted small' }, 'Scan with any UPI app'),
+        el('a', {
+          class: 'btn btn-primary btn-block', href: uri, style: 'margin-top:14px'
+        }, '📱 Open UPI app'),
+        el('p', { class: 'hint' }, 'On a phone this opens GPay, PhonePe, Paytm etc. with the amount already filled in.')
       ),
-      el('div', { class: 'card' },
-        el('h2', {}, '💳 Payment'),
-        el('p', { class: 'card-sub' },
-          'UPI payment is not switched on yet. Your cart is saved — come back once ' +
-          'payment is enabled, or contact your instructor to be granted access directly.'),
-        el('a', { class: 'btn btn-secondary', href: 'cart.html' }, '← Back to cart')
+      el('div', {},
+        el('div', { class: 'card' },
+          el('h2', {}, 'Pay this amount'),
+          el('div', { class: 'amount-big' }, fmtMoney(order.totalPaise)),
+          el('dl', {},
+            el('div', { class: 'paydetail' },
+              el('dt', {}, 'Pay to'),
+              el('dd', {}, settings.upiVpa, copyBtn(settings.upiVpa))),
+            el('div', { class: 'paydetail' },
+              el('dt', {}, 'Order'),
+              el('dd', { class: 'mono' }, order.orderNo)),
+            el('div', { class: 'paydetail' },
+              el('dt', {}, 'Reference'),
+              el('dd', { class: 'mono' }, order.txnRef, copyBtn(order.txnRef)))
+          ),
+          el('p', { class: 'hint' },
+            'Pay the exact amount. If your app doesn\'t carry the reference across, ' +
+            'add the order number in the payment note so it can be matched.')
+        ),
+        el('div', { class: 'card' },
+          el('h2', {}, 'Confirm your payment'),
+          el('p', { class: 'card-sub' },
+            'After paying, your UPI app shows a reference number (also called UTR or transaction ID). ' +
+            'Enter it here so your payment can be matched.'),
+          el('div', { class: 'field' },
+            el('label', { class: 'label' }, 'UPI reference / UTR number'), utrInput),
+          submitBtn,
+          el('button', {
+            class: 'btn btn-ghost btn-block', style: 'margin-top:8px',
+            onclick: async () => {
+              if (!confirm('Cancel this order? Nothing will be charged.')) return;
+              try { await cancelOrder(order.id); toast('Order cancelled'); location.href = 'store.html'; }
+              catch (e) { toast(e.message, 'err'); }
+            }
+          }, 'Cancel order')
+        ),
+        el('div', { class: 'warn-box' },
+          el('strong', {}, 'Access is not automatic. '),
+          'Payments are checked by hand, usually within a day. You\'ll see the status ' +
+          'on your Orders page and your materials appear as soon as it\'s confirmed.')
       )
-    );
+    )
+  );
+}
+
+/* ── step 3: done ─────────────────────────────────────── */
+function renderDone(order) {
+  steps(3);
+  document.getElementById('sub').textContent = 'Thanks — your payment is being checked.';
+  fill(contentEl,
+    el('div', { class: 'card', style: 'text-align:center' },
+      el('div', { style: 'font-size:2.6rem;margin-bottom:10px' }, '🎉'),
+      el('h2', {}, 'Payment submitted'),
+      el('p', { class: 'card-sub' },
+        `Order ${order.orderNo} is being verified. You'll get access as soon as it's confirmed — ` +
+        'usually within a day.'),
+      el('div', { class: 'stack', style: 'max-width:280px;margin:0 auto' },
+        el('a', { class: 'btn btn-primary', href: 'orders.html' }, 'View my orders'),
+        el('a', { class: 'btn btn-secondary', href: 'store.html' }, 'Continue shopping'))
+    )
+  );
+}
+
+/* ── boot ─────────────────────────────────────────────── */
+try {
+  const [all, s] = await Promise.all([listMaterials(), loadPaymentSettings()]);
+  byId = Object.fromEntries(all.map(m => [m.id, m]));
+  owned = grantedIds(isAdmin, student) || new Set(all.map(m => m.id));
+  settings = s;
+
+  const sellable = new Set(
+    all.filter(m => m.published && m.pricePaise !== null && !owned.has(m.id)).map(m => m.id));
+  cart.prune(sellable);
+
+  // Resuming an order that was already created?
+  const existingId = new URLSearchParams(location.search).get('order');
+  if (existingId) {
+    const snap = await getDoc(doc(db, 'orders', existingId));
+    if (snap.exists()) {
+      const order = { id: snap.id, ...snap.data() };
+      if (order.status === STATUS.PENDING) { renderPay(order); }
+      else if (order.status === STATUS.AWAITING) { renderDone(order); }
+      else { location.replace('orders.html'); }
+    } else {
+      renderReview();
+    }
+  } else {
+    renderReview();
   }
 } catch (e) {
   console.error('checkout:', e);
-  fill(contentEl, emptyState('⚠️', 'Could not load your order', e.message));
+  fill(contentEl, emptyState('⚠️', 'Could not load checkout', e.message));
 } finally {
   ready();
 }

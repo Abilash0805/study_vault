@@ -87,6 +87,65 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── PAYMENT SETTINGS ────────────────────────────────────
+    // The UPI id students pay to. Readable by anyone signed in
+    // because checkout has to display it; only the admin sets it.
+    match /settings/{key} {
+      allow read:  if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── ORDERS ──────────────────────────────────────────────
+    // A student may raise their own order and say "I've paid";
+    // only the admin may mark one paid. Note the student CANNOT
+    // grant themselves access — students/{email} is admin-write
+    // only — so a forged order is inert until the admin confirms
+    // the money actually arrived.
+    //
+    // Reading: a student can only query their own orders, and the
+    // query must say so (see listMyOrders) since rules cannot
+    // filter a collection query.
+    match /orders/{id} {
+      allow read: if isAdmin() || (signedIn() && resource.data.email == callerEmail());
+
+      allow create: if signedIn()
+        && request.resource.data.email == callerEmail()
+        && request.resource.data.status == 'pending_payment'
+        && request.resource.data.totalPaise is int
+        && request.resource.data.totalPaise >= 0
+        // approval fields may never be present at creation
+        && !request.resource.data.keys().hasAny(
+             ['paidAt', 'confirmedBy', 'refundedAt', 'refundedBy']);
+
+      // The student's only moves: attach a payment reference, or
+      // walk away. Everything else on the order stays untouched.
+      allow update: if signedIn()
+        && resource.data.email == callerEmail()
+        && (
+          (resource.data.status == 'pending_payment'
+            && request.resource.data.status == 'awaiting_confirmation'
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['utr', 'status', 'submittedAt', 'updatedAt']))
+          ||
+          (resource.data.status == 'pending_payment'
+            && request.resource.data.status == 'cancelled'
+            && request.resource.data.diff(resource.data).affectedKeys()
+                 .hasOnly(['status', 'updatedAt']))
+        );
+
+      allow update, delete: if isAdmin();
+    }
+
+    // ── LEDGER ──────────────────────────────────────────────
+    // Append-only. Written by the admin when a payment is
+    // confirmed or refunded; never edited or deleted by anyone,
+    // so the money trail cannot be quietly rewritten.
+    match /ledger/{id} {
+      allow read:   if isAdmin() || (signedIn() && resource.data.email == callerEmail());
+      allow create: if isAdmin();
+      allow update, delete: if false;
+    }
+
     // Anything not matched above is denied. New collections must be
     // added deliberately rather than inheriting access by accident.
     match /{document=**} {
