@@ -917,7 +917,11 @@ function wrapPdf(opts) {
     '<span id="page-label">– / –</span>',
     '</div>',
     '<script>var __PDF_CFG = ' + cfg + ';<\/script>',
-    '<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js" crossorigin="anonymous"><\/script>',
+    // No crossorigin="anonymous" here on purpose: it would make the whole
+    // viewer fail if the CDN response ever lacks CORS headers (a proxy that
+    // strips them, a mirror, self-hosting), and buys nothing since errors are
+    // surfaced by the pdfjsLib check below rather than window.onerror.
+    '<script src="https://cdnjs.cloudflare.com/ajax/libs/pdf.js/3.11.174/pdf.min.js"><\/script>',
     '<script>',
     '(function () {',
     '  var statusEl = document.getElementById("status");',
