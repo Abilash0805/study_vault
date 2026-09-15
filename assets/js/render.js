@@ -282,6 +282,82 @@ export function wrapPdf(opts) {
   ].join('\n');
 }
 
+/**
+ * Navigation guard injected into every material.
+ *
+ * A srcdoc iframe has no base URL of its own, so "#section" resolves
+ * against the PARENT page and the iframe navigates to a nested copy
+ * of the viewer — the material disappears. Serving the material from
+ * a blob: URL gives it a real base so in-page anchors work natively;
+ * this script handles everything a blob URL can't:
+ *
+ *   external links   open in a new tab instead of replacing the material
+ *   material links   ask the host page to open that material as its own page
+ *   dead relatives   explain themselves instead of blanking the frame
+ */
+const NAV_GUARD = `
+<script>
+(function () {
+  function post(type, payload) {
+    try { parent.postMessage(Object.assign({ __ck: true, type: type }, payload), '*'); }
+    catch (e) {}
+  }
+  function notice(text) {
+    var n = document.createElement('div');
+    n.textContent = text;
+    n.style.cssText = 'position:fixed;left:50%;bottom:18px;transform:translateX(-50%);' +
+      'background:#161726;color:#fff;padding:10px 16px;border-radius:10px;font:14px sans-serif;' +
+      'z-index:2147483647;max-width:86%;text-align:center;box-shadow:0 4px 16px rgba(0,0,0,.3)';
+    document.body.appendChild(n);
+    setTimeout(function () { n.remove(); }, 3200);
+  }
+  // "material:<id>", data-material, or any viewer.html?id= link is a
+  // jump to another material.
+  //
+  // The href is matched as text rather than with new URL(href, base):
+  // this document is served from a blob: URL, whose path is opaque, so
+  // resolving a relative URL against it throws.
+  function materialId(href, a) {
+    var m = /^material:(.+)$/i.exec(href);
+    if (m) return decodeURIComponent(m[1].trim());
+    if (a && a.dataset && a.dataset.material) return a.dataset.material;
+    var v = /(?:^|\\/)viewer\\.html\\?(?:[^#]*&)?id=([^&#]+)/i.exec(href);
+    if (v) { try { return decodeURIComponent(v[1]); } catch (e) { return v[1]; } }
+    return null;
+  }
+  document.addEventListener('click', function (e) {
+    var a = e.target && e.target.closest ? e.target.closest('a[href]') : null;
+    if (!a) return;
+    var raw = a.getAttribute('href') || '';
+    if (!raw || raw.charAt(0) === '#') return;        // blob URL handles anchors
+    if (/^(mailto:|tel:)/i.test(raw)) return;
+
+    var id = materialId(raw, a);
+    if (id) { e.preventDefault(); post('open-material', { id: id }); return; }
+
+    if (/^https?:/i.test(raw)) {                       // real external link
+      e.preventDefault();
+      window.open(raw, '_blank', 'noopener');
+      return;
+    }
+    // A relative path to a file that was never uploaded. Navigating
+    // would blank the frame, so say what happened instead.
+    e.preventDefault();
+    notice('That link points to "' + raw + '", which isn\\'t part of this material.');
+  }, true);
+
+  // Anything that still tries to replace the whole frame gets stopped.
+  window.addEventListener('beforeunload', function (e) { post('nav-attempt', {}); });
+}());
+</script>`;
+
+/** Insert the guard just before </body> so it runs after the content. */
+export function withNavGuard(html) {
+  if (typeof html !== 'string' || !html) return html;
+  const i = html.toLowerCase().lastIndexOf('</body>');
+  return i === -1 ? html + NAV_GUARD : html.slice(0, i) + NAV_GUARD + html.slice(i);
+}
+
 /** Turn a raw.githubusercontent.com URL into CORS-friendly fetch candidates. */
 export function githubFetchUrls(rawUrl) {
   const m = String(rawUrl).match(

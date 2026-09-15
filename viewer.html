@@ -65,6 +65,7 @@
 <script type="module">
 import { requireAuth, doSignOut } from './assets/js/session.js';
 import { readContent, buildViewerDoc, fetchRemoteDoc } from './assets/js/content.js';
+import { withNavGuard } from './assets/js/render.js';
 import { db, doc, getDoc } from './assets/js/firebase.js';
 import { ready, esc, el, fill, toast } from './assets/js/ui.js';
 
@@ -90,6 +91,34 @@ function showMessage(icon, heading, detail) {
     el('a', { class: 'btn btn-secondary btn-sm', href: 'library.html' }, 'Back to my materials')
   );
 }
+
+/**
+ * Serve the material from a blob: URL rather than srcdoc.
+ *
+ * srcdoc gives the iframe no base URL, so an in-material "#section"
+ * link resolves against the parent and navigates the frame to a
+ * nested copy of the viewer — the material vanishes. A blob URL is a
+ * real document address, so anchors and history work the way the
+ * material's author expects.
+ */
+let _blobUrl = null;
+function showDoc(html) {
+  if (_blobUrl) { URL.revokeObjectURL(_blobUrl); _blobUrl = null; }
+  _blobUrl = URL.createObjectURL(new Blob([withNavGuard(html)], { type: 'text/html' }));
+  frame.removeAttribute('srcdoc');
+  frame.src = _blobUrl;
+}
+addEventListener('pagehide', () => { if (_blobUrl) URL.revokeObjectURL(_blobUrl); });
+
+/** A link inside one material can open another as its own page. */
+addEventListener('message', (e) => {
+  if (e.source !== frame.contentWindow) return;       // only our own frame
+  const d = e.data;
+  if (!d || d.__ck !== true) return;
+  if (d.type === 'open-material' && typeof d.id === 'string' && d.id) {
+    location.href = 'viewer.html?id=' + encodeURIComponent(d.id);
+  }
+});
 
 /** Light deterrents inside the frame. Real protection is the Firestore rules. */
 function harden() {
@@ -126,21 +155,22 @@ if (!matId) {
     titleEl.textContent = title;
     document.title = title + ' — Chapter Kit';
 
-    frame.srcdoc = `<div style="font-family:sans-serif;display:flex;align-items:center;
-      justify-content:center;height:100vh;color:#8587a0;background:#f6f7fb;">Loading content…</div>`;
+    const spinner = (label) => `<div style="font-family:sans-serif;display:flex;
+      align-items:center;justify-content:center;height:100vh;color:#8587a0;
+      background:#f6f7fb;">${label}</div>`;
+    frame.srcdoc = spinner('Loading content…');
 
     const data = await readContent(matId);
-    let srcdoc = buildViewerDoc(data);
+    let html = buildViewerDoc(data);
 
     // A remote HTML/JSX URL needs an async fetch from the host page.
-    if (srcdoc === null && data.url) {
-      frame.srcdoc = `<div style="font-family:sans-serif;display:flex;align-items:center;
-        justify-content:center;height:100vh;color:#8587a0;background:#f6f7fb;">Fetching content…</div>`;
-      srcdoc = await fetchRemoteDoc(data.url);
+    if (html === null && data.url) {
+      frame.srcdoc = spinner('Fetching content…');
+      html = await fetchRemoteDoc(data.url);
     }
 
     frame.onload = harden;
-    frame.srcdoc = srcdoc;
+    showDoc(html);
   } catch (e) {
     console.error('viewer:', e);
     titleEl.textContent = 'Could not open';

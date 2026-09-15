@@ -169,6 +169,34 @@ A student may hold **5 open requests** at a time (`MAX_OPEN_PER_STUDENT`), which
 keeps one enthusiastic person from flooding the queue. Firestore rules also cap
 field lengths, so the limits hold even if the page is bypassed.
 
+## Links inside a material
+
+Materials are served to the viewer from a **blob: URL**, not `srcdoc`. This
+matters: a `srcdoc` iframe has no base URL of its own, so a link like
+`href="#section"` resolves against the *parent* page and the iframe navigates
+to a nested copy of the viewer — the material vanishes. A blob URL is a real
+document address, so in-page anchors and `location.href = '#id'` behave the way
+the material's author intended.
+
+A small guard script is injected into every material to handle the rest:
+
+| Link in a material | What happens |
+|---|---|
+| `#section` | Scrolls within the material |
+| `https://…` | Opens in a new tab; the material stays put |
+| `material:<id>` | Opens that material as its own page |
+| `viewer.html?id=<id>` | Same — treated as a jump to that material |
+| `chapter2.html` | Blocked, with a note saying it isn't part of this material |
+
+**To link one material to another**, use the material's Firestore document id:
+
+```html
+<a href="material:AbC123xyz">Next chapter →</a>
+```
+
+Ids are visible in the admin materials list. Nothing else resolves — a material
+is a single uploaded file, so relative paths to other files have nowhere to go.
+
 ## A note on "no download"
 
 The viewer disables right-click and the usual save shortcuts, and PDFs are
