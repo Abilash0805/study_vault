@@ -3,12 +3,15 @@
 //  Network-first with a cache fallback, so a deploy is picked up
 //  immediately but the app still opens on a flaky connection.
 // ═══════════════════════════════════════════════════════════
-const CACHE = 'studyvault-v4';
+const CACHE = 'studyvault-v5';
 
 const SHELL = [
   './',
   'index.html',
   'library.html',
+  'store.html',
+  'cart.html',
+  'checkout.html',
   'viewer.html',
   'admin.html',
   'manifest.json',
@@ -19,7 +22,8 @@ const SHELL = [
   'assets/js/ui.js',
   'assets/js/session.js',
   'assets/js/content.js',
-  'assets/js/render.js'
+  'assets/js/render.js',
+  'assets/js/cart.js'
 ];
 
 // Hosts that must always hit the network: auth, database, and the CDN

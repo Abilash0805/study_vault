@@ -1,0 +1,175 @@
+<!DOCTYPE html>
+<html lang="en" class="booting">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Store — StudyVault</title>
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6d5ef9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/app.css">
+
+<style>
+  .filters{display:flex;gap:8px;flex-wrap:wrap;margin-bottom:22px;align-items:center;}
+  .chip{
+    background:var(--card);border:1px solid var(--border);border-radius:99px;
+    padding:7px 15px;font-family:inherit;font-size:.82rem;color:var(--ink2);
+    cursor:pointer;transition:background .15s,border-color .15s,color .15s;
+  }
+  .chip:hover{background:var(--sunken);}
+  .chip.active{background:var(--accent-soft);border-color:var(--accent-line);color:var(--accent-ink);font-weight:500;}
+  .search{max-width:260px;}
+</style>
+</head>
+<body>
+
+<div id="boot"><div class="spinner"></div><span class="boot-text">Loading the store…</span></div>
+
+<div id="site-header"></div>
+
+<main class="page">
+  <div class="page-head">
+    <h1>Store</h1>
+    <p>Browse available study materials. Anything you already own is marked — you'll never be charged twice.</p>
+  </div>
+
+  <div class="filters" id="filters"></div>
+
+  <div id="content">
+    <div class="empty"><span class="empty-ico">⏳</span><strong>Loading…</strong></div>
+  </div>
+</main>
+
+<script type="module">
+import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
+import { listMaterials, kindIcon } from './assets/js/content.js';
+import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount } from './assets/js/ui.js';
+import * as cart from './assets/js/cart.js';
+
+const { user, isAdmin, student } = await requireAuth();
+mountChrome({ active: 'store', user, isAdmin, onSignOut: () => doSignOut() });
+
+cart.onChange(setCartCount);
+
+const contentEl = document.getElementById('content');
+const filtersEl = document.getElementById('filters');
+
+let forSale = [];
+let owned = new Set();
+let activeTag = 'all';
+let search = '';
+
+function tile(m) {
+  const isOwned = owned.has(m.id);
+  const inCart  = cart.has(m.id);
+  const free    = !m.pricePaise;
+
+  const card = el('div', { class: 'tile', style: 'cursor:default' },
+    el('span', { class: 'tile-ico' }, kindIcon(m.kind, m.id)),
+    el('div', { class: 'tile-title' }, m.title),
+    el('div', { class: 'tile-meta' }, m.tag || 'General')
+  );
+
+  const foot = el('div', { class: 'tile-foot' });
+
+  if (isOwned) {
+    foot.append(
+      el('span', { class: 'owned-note' }, '✓ In your library'),
+      el('a', { class: 'btn btn-secondary btn-sm', href: `viewer.html?id=${encodeURIComponent(m.id)}` }, 'Open')
+    );
+  } else {
+    foot.append(
+      el('span', { class: 'price' + (free ? ' price-free' : '') },
+        free ? 'Free' : fmtMoney(m.pricePaise)),
+      el('button', {
+        class: 'btn btn-sm ' + (inCart ? 'btn-secondary' : 'btn-primary'),
+        onclick: (e) => {
+          const nowIn = cart.toggle(m.id);
+          toast(nowIn ? 'Added to cart' : 'Removed from cart', nowIn ? 'ok' : '');
+          render();
+        }
+      }, inCart ? 'In cart ✓' : 'Add to cart')
+    );
+  }
+
+  card.append(foot);
+  return card;
+}
+
+function render() {
+  const tags = ['all', ...new Set(forSale.map(m => (m.tag || '').trim() || 'General'))];
+
+  fill(filtersEl,
+    ...tags.map(t => el('button', {
+      class: 'chip' + (t === activeTag ? ' active' : ''),
+      onclick: () => { activeTag = t; render(); }
+    }, t === 'all' ? 'All subjects' : t)),
+    el('input', {
+      class: 'input search', type: 'search', placeholder: 'Search…', value: search,
+      oninput: (e) => { search = e.target.value; renderGrid(); }
+    })
+  );
+
+  renderGrid();
+}
+
+function renderGrid() {
+  const q = search.trim().toLowerCase();
+  const shown = forSale.filter(m => {
+    const tag = (m.tag || '').trim() || 'General';
+    if (activeTag !== 'all' && tag !== activeTag) return false;
+    if (q && !m.title.toLowerCase().includes(q)) return false;
+    return true;
+  });
+
+  if (!shown.length) {
+    fill(contentEl, emptyState('🔍', 'Nothing matches',
+      'Try a different subject or search term.'));
+    return;
+  }
+  fill(contentEl, el('div', { class: 'grid' }, ...shown.map(tile)));
+}
+
+try {
+  const all = await listMaterials();
+  owned = grantedIds(isAdmin, student) || new Set(all.map(m => m.id));
+
+  // Only published materials with a price set are sellable. Anything with no
+  // price is instructor-assigned and simply isn't listed here.
+  forSale = all.filter(m => m.published && m.pricePaise !== null);
+
+  // Drop anything from the cart the student already owns or that was delisted.
+  const sellableIds = new Set(forSale.filter(m => !owned.has(m.id)).map(m => m.id));
+  const dropped = cart.prune(sellableIds);
+  if (dropped.length) toast(`${dropped.length} item(s) removed from your cart`, '');
+
+  if (!forSale.length) {
+    fill(contentEl, emptyState('🏪', 'The store is empty',
+      isAdmin ? 'Set a price on a material in the Admin panel to list it here.'
+              : 'Nothing is on sale right now. Check back soon.'));
+  } else {
+    render();
+  }
+} catch (e) {
+  console.error('store:', e);
+  fill(contentEl, emptyState('⚠️', 'Could not load the store', e.message));
+  toast('Failed to load store', 'err');
+} finally {
+  ready();
+}
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>

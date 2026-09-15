@@ -9,21 +9,36 @@ server to run.
 | File | Who | What |
 |---|---|---|
 | `index.html` | public | Landing page + Google sign-in. Signed-in users are redirected on. |
+| `store.html` | signed in | Catalogue of materials on sale, with subject filters and search. |
+| `cart.html` | signed in | Cart contents and order total. |
+| `checkout.html` | signed in | Order summary. Payment is not wired up yet (Stage 3). |
 | `library.html` | student / admin | "My Materials" — folders, breadcrumbs, grid. |
 | `viewer.html?id=<id>` | student / admin | Secure viewer (HTML, JSX/TSX, PDF). |
-| `admin.html` | admin only | Students, access, folders, materials, maintenance. |
+| `admin.html` | admin only | Students, access, folders, materials, pricing, maintenance. |
 
 Shared code lives in `assets/js/` (`config`, `firebase`, `ui`, `session`,
-`content`, `render`) and `assets/css/app.css`.
+`content`, `render`, `cart`) and `assets/css/app.css`.
 
 ## Data model
 
 ```
 students/{email}        { email, name, files: [materialId], addedAt }
 folders/{id}            { name, parentId, createdAt }
-materials/{id}          { title, tag, folderId, kind, createdAt }      ← metadata
+materials/{id}          { title, tag, folderId, kind, createdAt,
+                          pricePaise, published }                      ← metadata
 materialContent/{id}    { htmlContent | jsxContent | pdfContent | url } ← the bytes
 ```
+
+**Prices are integers in paise** (`₹299.00` → `29900`), so totals never suffer
+floating-point error. `pricePaise: null` means *not for sale* — the material is
+instructor-assigned only and never appears in the store. `published: false`
+hides it from the store without clearing the price.
+
+**The cart lives in `localStorage`**, holding ids only — never prices. It is
+per-device and disposable; the durable record is the order, created at
+checkout. Prices are re-read from Firestore every time the cart is shown, so
+editing the stored cart cannot change what anything costs. Items already owned,
+delisted, or unknown are pruned automatically.
 
 **Why content is a separate collection.** Firestore rules cannot filter a
 collection query — a rule that depends on per-document data makes the whole

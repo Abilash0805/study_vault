@@ -62,6 +62,19 @@
     width:8px;height:8px;border-radius:50%;background:var(--success-soft);
     border:1.5px solid var(--success);flex-shrink:0;margin-top:6px;
   }
+  .price-edit{
+    display:inline-flex;align-items:center;gap:3px;background:var(--sunken);
+    border:1px solid var(--border);border-radius:6px;padding:3px 8px;font-size:.78rem;color:var(--ink2);
+  }
+  .price-edit input{
+    width:62px;border:none;background:none;font-family:inherit;
+    font-size:.78rem;color:var(--ink);outline:none;padding:1px 0;
+  }
+  .listed-toggle{
+    display:inline-flex;align-items:center;gap:5px;font-size:.75rem;color:var(--ink2);
+    white-space:nowrap;cursor:pointer;
+  }
+  .listed-toggle input{accent-color:var(--accent);cursor:pointer;}
 </style>
 </head>
 <body>
@@ -216,10 +229,12 @@ import {
   collection, getDocs, arrayRemove, deleteField
 } from './assets/js/firebase.js';
 import { listFolders, inferKind, CONTENT_FIELDS, hasInlineContent } from './assets/js/content.js';
-import { mountChrome, ready, el, fill, esc, fmtDate, toast, emptyState } from './assets/js/ui.js';
+import { mountChrome, ready, el, fill, esc, fmtDate, fmtMoney, toast, emptyState, setCartCount } from './assets/js/ui.js';
+import * as cart from './assets/js/cart.js';
 
 const { user, isAdmin } = await requireAuth({ adminOnly: true });
 mountChrome({ active: 'admin', user, isAdmin, onSignOut: () => doSignOut() });
+cart.onChange(setCartCount);
 ready();
 
 /* ── tabs ─────────────────────────────────────────────── */
@@ -631,10 +646,30 @@ async function loadMaterialsList() {
         el('div', { class: 'list-title' }, m.title || '(untitled)',
           m.tag ? el('span', { class: 'badge badge-grey' }, m.tag) : null,
           sizeBadge({ id: d.id, ...m }, contentMap),
+          Number.isFinite(m.pricePaise)
+            ? el('span', { class: 'badge badge-green' }, fmtMoney(m.pricePaise))
+            : el('span', { class: 'badge badge-grey' }, 'Not for sale'),
+          m.published === false ? el('span', { class: 'badge badge-amber' }, 'Hidden') : null,
           legacy ? el('span', { class: 'badge badge-amber' }, 'Needs migration') : null),
         el('div', { class: 'list-sub' }, 'Added ' + fmtDate(m.createdAt))
       ),
       el('div', { class: 'list-actions' },
+        el('label', { class: 'price-edit', title: 'Price in rupees — leave blank to keep it off the store' },
+          el('span', {}, '₹'),
+          el('input', {
+            type: 'number', min: '0', step: '1', placeholder: '—',
+            value: Number.isFinite(m.pricePaise) ? String(m.pricePaise / 100) : '',
+            onchange: e => setPrice(d.id, e.target.value)
+          })
+        ),
+        el('label', { class: 'listed-toggle', title: 'Show in the store' },
+          el('input', {
+            type: 'checkbox',
+            ...(m.published !== false ? { checked: true } : {}),
+            onchange: e => setPublished(d.id, e.target.checked)
+          }),
+          'Listed'
+        ),
         el('select', {
           class: 'move-select',
           onchange: e => moveMaterial(d.id, e.target.value)
@@ -650,6 +685,32 @@ async function moveMaterial(id, folderId) {
   try {
     await updateDoc(doc(db, 'materials', id), { folderId: folderId || null });
     toast('Moved', 'ok');
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+/**
+ * Price is stored in paise as an integer, so totals never hit float error.
+ * Blank means "not for sale" (null) — the store lists only priced materials.
+ */
+async function setPrice(id, rupees) {
+  const raw = String(rupees).trim();
+  let pricePaise = null;
+  if (raw !== '') {
+    const n = Number(raw);
+    if (!Number.isFinite(n) || n < 0) { toast('Enter a valid price', 'err'); return; }
+    pricePaise = Math.round(n * 100);
+  }
+  try {
+    await updateDoc(doc(db, 'materials', id), { pricePaise });
+    toast(pricePaise === null ? 'Removed from sale' : 'Price updated', 'ok');
+    loadMaterialsList();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+async function setPublished(id, published) {
+  try {
+    await updateDoc(doc(db, 'materials', id), { published });
+    toast(published ? 'Listed in the store' : 'Hidden from the store', 'ok');
   } catch (e) { toast('Error: ' + e.message, 'err'); }
 }
 

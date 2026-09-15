@@ -39,7 +39,8 @@
 <script type="module">
 import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
 import { listMaterials, listFolders, kindIcon } from './assets/js/content.js';
-import { mountChrome, ready, el, fill, esc, fmtDate, emptyState, toast } from './assets/js/ui.js';
+import { mountChrome, ready, el, fill, esc, fmtDate, emptyState, toast, setCartCount } from './assets/js/ui.js';
+import * as cart from './assets/js/cart.js';
 
 const { user, isAdmin, student } = await requireAuth();
 
@@ -48,6 +49,7 @@ mountChrome({
   user, isAdmin,
   onSignOut: () => doSignOut()
 });
+cart.onChange(setCartCount);
 
 const first = (user.displayName || user.email).split(/[\s@]/)[0];
 document.getElementById('greeting').textContent = `Hello, ${first} 👋`;

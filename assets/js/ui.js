@@ -86,17 +86,31 @@ export function emptyState(icon, title, detail) {
 /* ── site chrome ──────────────────────────────────────── */
 
 const NAV = [
+  { id: 'store',   href: 'store.html',   icon: '🛍️', label: 'Store' },
   { id: 'library', href: 'library.html', icon: '📚', label: 'My Materials' },
-  { id: 'admin',   href: 'admin.html',   icon: '⚙',  label: 'Admin',  adminOnly: true }
+  { id: 'cart',    href: 'cart.html',    icon: '🛒', label: 'Cart', badge: true },
+  { id: 'admin',   href: 'admin.html',   icon: '⚙',  label: 'Admin', adminOnly: true }
 ];
 
-function navButtons(active, isAdmin, cls) {
+function navButtons(active, isAdmin) {
   return NAV
     .filter(n => !n.adminOnly || isAdmin)
-    .map(n => el('a', {
-      class: 'nav-link' + (n.id === active ? ' active' : ''),
-      href: n.href
-    }, el('span', { 'aria-hidden': 'true' }, n.icon), n.label));
+    .map(n => {
+      const link = el('a', {
+        class: 'nav-link' + (n.id === active ? ' active' : ''),
+        href: n.href
+      }, el('span', { 'aria-hidden': 'true' }, n.icon), n.label);
+      if (n.badge) link.append(el('span', { class: 'cart-count', hidden: true }, '0'));
+      return link;
+    });
+}
+
+/** Keep every cart badge on the page in sync. */
+export function setCartCount(n) {
+  document.querySelectorAll('.cart-count').forEach(b => {
+    b.textContent = String(n);
+    b.hidden = !n;
+  });
 }
 
 /**

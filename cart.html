@@ -1,0 +1,139 @@
+<!DOCTYPE html>
+<html lang="en" class="booting">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Cart — StudyVault</title>
+<meta name="robots" content="noindex">
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6d5ef9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+
+<div id="boot"><div class="spinner"></div><span class="boot-text">Loading your cart…</span></div>
+
+<div id="site-header"></div>
+
+<main class="page">
+  <div class="page-head">
+    <h1>Your cart</h1>
+    <p>Review your items before checking out.</p>
+  </div>
+
+  <div id="content">
+    <div class="empty"><span class="empty-ico">⏳</span><strong>Loading…</strong></div>
+  </div>
+</main>
+
+<script type="module">
+import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
+import { listMaterials, kindIcon } from './assets/js/content.js';
+import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount } from './assets/js/ui.js';
+import * as cart from './assets/js/cart.js';
+
+const { user, isAdmin, student } = await requireAuth();
+mountChrome({ active: 'cart', user, isAdmin, onSignOut: () => doSignOut() });
+cart.onChange(setCartCount);
+
+const contentEl = document.getElementById('content');
+let byId = {};
+
+function line(m) {
+  return el('div', { class: 'cart-line' },
+    el('span', { class: 'cart-line-ico' }, kindIcon(m.kind, m.id)),
+    el('div', { class: 'cart-line-body' },
+      el('div', { class: 'cart-line-title' }, m.title),
+      el('div', { class: 'cart-line-meta' }, m.tag || 'General')
+    ),
+    el('span', { class: 'price' + (m.pricePaise ? '' : ' price-free') },
+      m.pricePaise ? fmtMoney(m.pricePaise) : 'Free'),
+    el('button', {
+      class: 'btn btn-ghost btn-sm', 'aria-label': `Remove ${m.title}`,
+      onclick: () => { cart.remove(m.id); toast('Removed'); render(); }
+    }, '✕')
+  );
+}
+
+function render() {
+  const ids = cart.items();
+
+  if (!ids.length) {
+    fill(contentEl, emptyState('🛒', 'Your cart is empty',
+      'Browse the store to find study materials.'));
+    contentEl.append(el('div', { style: 'text-align:center' },
+      el('a', { class: 'btn btn-primary', href: 'store.html' }, 'Go to the store')));
+    return;
+  }
+
+  const lines = ids.map(id => byId[id]).filter(Boolean);
+  const totalPaise = cart.total(byId, ids);
+
+  fill(contentEl, el('div', { class: 'cart-layout' },
+    el('div', { class: 'card' },
+      el('h2', {}, `${lines.length} item${lines.length !== 1 ? 's' : ''}`),
+      ...lines.map(line)
+    ),
+    el('aside', { class: 'summary' },
+      el('h2', {}, 'Summary'),
+      ...lines.map(m => el('div', { class: 'summary-row' },
+        el('span', { class: 'truncate' }, m.title),
+        el('span', {}, m.pricePaise ? fmtMoney(m.pricePaise) : 'Free')
+      )),
+      el('div', { class: 'summary-total' },
+        el('span', {}, 'Total'),
+        el('span', {}, fmtMoney(totalPaise))
+      ),
+      el('a', {
+        class: 'btn btn-primary btn-block', href: 'checkout.html',
+        style: 'margin-top:16px'
+      }, 'Proceed to checkout'),
+      el('a', {
+        class: 'btn btn-ghost btn-block', href: 'store.html', style: 'margin-top:8px'
+      }, 'Continue shopping'),
+      el('p', { class: 'hint', style: 'margin-top:14px' },
+        'Payment is by UPI. You\'ll get access as soon as your payment is confirmed.')
+    )
+  ));
+}
+
+try {
+  const all = await listMaterials();
+  byId = Object.fromEntries(all.map(m => [m.id, m]));
+
+  const owned = grantedIds(isAdmin, student) || new Set(all.map(m => m.id));
+
+  // Prices come from Firestore, never from the stored cart — and anything
+  // already owned or delisted is dropped before we show a total.
+  const sellable = new Set(
+    all.filter(m => m.published && m.pricePaise !== null && !owned.has(m.id)).map(m => m.id)
+  );
+  const dropped = cart.prune(sellable);
+  if (dropped.length) {
+    toast(`${dropped.length} item(s) are no longer available and were removed`, '');
+  }
+
+  render();
+} catch (e) {
+  console.error('cart:', e);
+  fill(contentEl, emptyState('⚠️', 'Could not load your cart', e.message));
+} finally {
+  ready();
+}
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>

@@ -87,6 +87,49 @@ html:not(.booting) #boot{display:none;}
 }
 .nav-link:hover{background:var(--sunken);color:var(--ink);text-decoration:none;}
 .nav-link.active{background:var(--accent-soft);color:var(--accent-ink);font-weight:500;}
+.cart-count{
+  display:inline-flex;align-items:center;justify-content:center;
+  min-width:19px;height:19px;padding:0 6px;border-radius:99px;
+  background:var(--accent);color:#fff;font-size:.68rem;font-weight:500;line-height:1;
+}
+
+/* ── PRICING ────────────────────────────────────────────── */
+.price{font-size:1.05rem;font-weight:500;color:var(--ink);}
+.price-free{color:var(--success-ink);}
+.tile-foot{
+  display:flex;align-items:center;justify-content:space-between;
+  gap:8px;margin-top:12px;padding-top:12px;border-top:1px solid var(--border);
+}
+.owned-note{
+  display:inline-flex;align-items:center;gap:5px;
+  font-size:.76rem;color:var(--success-ink);font-weight:500;
+}
+.summary{
+  position:sticky;top:calc(var(--header-h) + 16px);
+  background:var(--card);border:1px solid var(--border);
+  border-radius:var(--radius);padding:20px;
+}
+.summary h2{font-family:'DM Sans',sans-serif;font-size:1rem;font-weight:500;margin-bottom:14px;}
+.summary-row{
+  display:flex;justify-content:space-between;gap:12px;
+  font-size:.875rem;padding:7px 0;color:var(--ink2);
+}
+.summary-total{
+  display:flex;justify-content:space-between;gap:12px;align-items:baseline;
+  margin-top:12px;padding-top:14px;border-top:1px solid var(--border);
+  font-size:1rem;font-weight:500;color:var(--ink);
+}
+.cart-layout{display:grid;gap:20px;grid-template-columns:1fr;align-items:start;}
+@media(min-width:900px){.cart-layout{grid-template-columns:1fr 320px;}}
+.cart-line{
+  display:flex;align-items:center;gap:14px;
+  padding:14px 0;border-bottom:1px solid var(--border);
+}
+.cart-line:last-child{border-bottom:none;}
+.cart-line-ico{font-size:1.6rem;flex-shrink:0;}
+.cart-line-body{flex:1;min-width:0;}
+.cart-line-title{font-size:.9rem;font-weight:500;color:var(--ink);}
+.cart-line-meta{font-size:.76rem;color:var(--muted);margin-top:2px;}
 
 .header-right{display:flex;align-items:center;gap:8px;margin-left:auto;min-width:0;}
 .user-chip{
