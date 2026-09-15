@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html lang="en" class="booting">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Request Material — StudyVault</title>
+<meta name="robots" content="noindex">
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6d5ef9">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/app.css">
+
+<style>
+  .req-layout{display:grid;gap:20px;grid-template-columns:1fr;align-items:start;}
+  @media(min-width:900px){.req-layout{grid-template-columns:1fr 1fr;}}
+  .req-item{
+    border:1px solid var(--border);border-radius:var(--radius-sm);
+    padding:14px;margin-bottom:12px;background:var(--card);
+  }
+  .req-top{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:6px;}
+  .req-chapter{font-weight:500;font-size:.9rem;}
+  .req-details{font-size:.82rem;color:var(--ink2);line-height:1.6;margin-top:6px;white-space:pre-wrap;}
+  .req-reply{
+    margin-top:10px;padding:10px 12px;border-radius:var(--radius-xs);
+    background:var(--sunken);font-size:.82rem;line-height:1.6;
+  }
+  .req-reply strong{font-weight:500;}
+  .counter{font-size:.72rem;color:var(--muted);text-align:right;margin-top:4px;}
+</style>
+</head>
+<body>
+
+<div id="boot"><div class="spinner"></div><span class="boot-text">Loading…</span></div>
+
+<div id="site-header"></div>
+
+<main class="page">
+  <div class="page-head">
+    <h1>Request study material</h1>
+    <p>Can't find what you need? Tell us the chapter and we'll look at making it.</p>
+  </div>
+
+  <div class="req-layout">
+    <section class="card">
+      <h2>New request</h2>
+      <p class="card-sub">The more specific you are, the more useful the material will be.</p>
+
+      <div class="field">
+        <label class="label" for="r-subject">Subject</label>
+        <input class="input" id="r-subject" type="text" maxlength="60"
+               placeholder="e.g. Physics" autocomplete="off">
+      </div>
+
+      <div class="field">
+        <label class="label" for="r-chapter">Chapter or topic <span style="color:var(--danger)">*</span></label>
+        <input class="input" id="r-chapter" type="text" maxlength="140"
+               placeholder="e.g. Chapter 7 — Rotational Motion" autocomplete="off">
+      </div>
+
+      <div class="field">
+        <label class="label" for="r-details">What do you need?</label>
+        <textarea class="textarea" id="r-details" rows="5" maxlength="1000"
+                  placeholder="Which parts are you stuck on? Do you need worked examples, practice questions, a summary sheet? Any exam or board it should match?"></textarea>
+        <div class="counter" id="r-count">0 / 1000</div>
+      </div>
+
+      <button class="btn btn-primary btn-block" id="btn-submit">Send request</button>
+      <p class="hint" id="r-hint">
+        Only your instructor sees this. You'll see the status update here.
+      </p>
+    </section>
+
+    <section>
+      <div class="card">
+        <h2>Your requests</h2>
+        <div id="my-requests"><p class="muted small">Loading…</p></div>
+      </div>
+    </section>
+  </div>
+</main>
+
+<script type="module">
+import { requireAuth, doSignOut } from './assets/js/session.js';
+import { mountChrome, ready, el, fill, fmtDate, emptyState, toast, setCartCount } from './assets/js/ui.js';
+import * as cart from './assets/js/cart.js';
+import {
+  REQ_STATUS, REQ_META, MAX_OPEN_PER_STUDENT,
+  listMyRequests, createRequest, withdrawRequest
+} from './assets/js/requests.js';
+
+const { user, isAdmin } = await requireAuth();
+mountChrome({ active: 'request', user, isAdmin, onSignOut: () => doSignOut() });
+cart.onChange(setCartCount);
+
+const listEl = document.getElementById('my-requests');
+const detailsEl = document.getElementById('r-details');
+const countEl = document.getElementById('r-count');
+
+detailsEl.addEventListener('input', () => {
+  countEl.textContent = `${detailsEl.value.length} / 1000`;
+});
+
+function card(r) {
+  const meta = REQ_META[r.status] || { label: r.status, badge: 'badge-grey' };
+
+  const box = el('div', { class: 'req-item' },
+    el('div', { class: 'req-top' },
+      el('span', { class: 'badge ' + meta.badge }, meta.label),
+      el('span', { class: 'muted small' }, fmtDate(r.createdAt))
+    ),
+    el('div', { class: 'req-chapter' },
+      (r.subject ? r.subject + ' · ' : '') + r.chapter),
+    r.details ? el('div', { class: 'req-details' }, r.details) : null
+  );
+
+  if (r.adminNote) {
+    box.append(el('div', { class: 'req-reply' },
+      el('strong', {}, 'Reply: '), r.adminNote));
+  }
+
+  if (r.status === REQ_STATUS.FULFILLED && r.materialId) {
+    box.append(el('a', {
+      class: 'btn btn-primary btn-sm', style: 'margin-top:10px',
+      href: `viewer.html?id=${encodeURIComponent(r.materialId)}`
+    }, 'Open the material'));
+  }
+
+  if (r.status === REQ_STATUS.OPEN) {
+    box.append(el('button', {
+      class: 'btn btn-ghost btn-sm', style: 'margin-top:8px',
+      onclick: async () => {
+        if (!confirm('Withdraw this request?')) return;
+        try { await withdrawRequest(r.id); toast('Request withdrawn'); refresh(); }
+        catch (e) { toast('Error: ' + e.message, 'err'); }
+      }
+    }, 'Withdraw'));
+  }
+
+  return box;
+}
+
+async function refresh() {
+  try {
+    const rows = await listMyRequests(user.email);
+    if (!rows.length) {
+      fill(listEl, emptyState('💡', 'No requests yet',
+        'Ask for a chapter and it shows up here with its status.'));
+      return;
+    }
+    fill(listEl, ...rows.map(card));
+
+    const open = rows.filter(r => r.status === REQ_STATUS.OPEN).length;
+    document.getElementById('r-hint').textContent = open >= MAX_OPEN_PER_STUDENT
+      ? `You have ${open} requests waiting for review — withdraw one before adding another.`
+      : 'Only your instructor sees this. You\'ll see the status update here.';
+  } catch (e) {
+    console.error('requests:', e);
+    fill(listEl, emptyState('⚠️', 'Could not load your requests', e.message));
+  }
+}
+
+document.getElementById('btn-submit').addEventListener('click', async (e) => {
+  const btn = e.target;
+  const subject = document.getElementById('r-subject').value;
+  const chapter = document.getElementById('r-chapter').value;
+  const details = detailsEl.value;
+
+  btn.disabled = true;
+  btn.textContent = 'Sending…';
+  try {
+    await createRequest({
+      email: user.email, name: user.displayName || '', subject, chapter, details
+    });
+    document.getElementById('r-subject').value = '';
+    document.getElementById('r-chapter').value = '';
+    detailsEl.value = '';
+    countEl.textContent = '0 / 1000';
+    toast('Request sent — thanks!', 'ok');
+    refresh();
+  } catch (err) {
+    toast(err.message || 'Could not send the request', 'err');
+  } finally {
+    btn.disabled = false;
+    btn.textContent = 'Send request';
+  }
+});
+
+await refresh();
+ready();
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>

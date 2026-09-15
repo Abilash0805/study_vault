@@ -13,6 +13,7 @@ server to run.
 | `cart.html` | signed in | Cart contents and order total. |
 | `checkout.html` | signed in | Places the order, shows the UPI QR / link, takes the payment reference. |
 | `orders.html` | signed in | The student's own orders and payment status. |
+| `request.html` | signed in | Ask for a chapter that doesn't exist yet; track its status. |
 | `library.html` | student / admin | "My Materials" — folders, breadcrumbs, grid. |
 | `viewer.html?id=<id>` | student / admin | Secure viewer (HTML, JSX/TSX, PDF). |
 | `admin.html` | admin only | Students, access, folders, materials, pricing, maintenance. |
@@ -140,6 +141,33 @@ student bought separately. Money is **not** moved for you; send it back yourself
 > one runs against NPCI merchant rules and most apps' terms, has low inbound
 > limits, and accounts do get frozen — which would strand paying students. The
 > UPI ID is configuration precisely so it is quick to change.
+
+## Material requests
+
+Students ask for a chapter they need; you triage it in **Admin → Requests**.
+
+```
+requests/{id}  { email, name, subject, chapter, details, status,
+                 adminNote, materialId, createdAt, updatedAt }
+
+open ──plan──> planned ──mark ready──> fulfilled
+  │                                        └─ links the material, so the
+  ├──decline──> declined                      student gets a direct link
+  └──(student)──> withdrawn
+```
+
+Requests are **private to their author and you** — the same rule shape as
+orders. Making them public would expose every student's email and what they're
+stuck on to everyone else.
+
+The **Request queue** groups live requests by chapter, so the same topic asked
+by four students is one job rather than four rows. Ordered by how many asked,
+then oldest first, so a single request still gets made — it just queues behind
+something several people want, and nothing sinks by being old.
+
+A student may hold **5 open requests** at a time (`MAX_OPEN_PER_STUDENT`), which
+keeps one enthusiastic person from flooding the queue. Firestore rules also cap
+field lengths, so the limits hold even if the page is bypassed.
 
 ## A note on "no download"
 

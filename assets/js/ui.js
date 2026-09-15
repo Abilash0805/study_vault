@@ -88,6 +88,7 @@ export function emptyState(icon, title, detail) {
 const NAV = [
   { id: 'store',   href: 'store.html',   icon: '🛍️', label: 'Store' },
   { id: 'library', href: 'library.html', icon: '📚', label: 'My Materials' },
+  { id: 'request', href: 'request.html', icon: '💡', label: 'Request' },
   { id: 'orders',  href: 'orders.html',  icon: '🧾', label: 'Orders' },
   { id: 'cart',    href: 'cart.html',    icon: '🛒', label: 'Cart', badge: true },
   { id: 'admin',   href: 'admin.html',   icon: '⚙',  label: 'Admin', adminOnly: true }

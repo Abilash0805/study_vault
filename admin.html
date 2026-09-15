@@ -94,6 +94,15 @@
   }
   .flag-warn{background:var(--warn-soft);color:#7c4a03;border:1px solid #fde68a;}
   .flag-danger{background:var(--danger-soft);color:#b91c1c;border:1px solid var(--danger-line);}
+  .req-details{
+    font-size:.84rem;color:var(--ink2);line-height:1.6;
+    white-space:pre-wrap;margin-top:4px;
+  }
+  .req-reply{
+    margin-top:10px;padding:10px 12px;border-radius:var(--radius-xs);
+    background:var(--card);border:1px solid var(--border);font-size:.82rem;line-height:1.6;
+  }
+  .req-reply strong{font-weight:500;}
 </style>
 </head>
 <body>
@@ -115,8 +124,36 @@
     <button class="tab active" data-tab="students" role="tab">Students &amp; Access</button>
     <button class="tab" data-tab="materials" role="tab">Study Materials</button>
     <button class="tab" data-tab="payments" role="tab">Payments <span class="tab-count" id="tab-count" hidden>0</span></button>
+    <button class="tab" data-tab="requests" role="tab">Requests <span class="tab-count" id="req-count" hidden>0</span></button>
     <button class="tab" data-tab="maintenance" role="tab">Maintenance</button>
   </div>
+
+  <!-- ══ REQUESTS ══ -->
+  <section class="panel" id="panel-requests">
+    <div class="card">
+      <h2>📋 Request queue</h2>
+      <p class="card-sub">
+        Everything still to make, grouped so the same chapter asked by several
+        students is one job. Most-asked first, then oldest — so nothing sinks.
+      </p>
+      <div id="demand-list"><p class="muted small">Loading…</p></div>
+    </div>
+
+    <div class="card">
+      <h2>💡 All requests</h2>
+      <div class="form-row" style="margin-bottom:12px;">
+        <select class="select" id="req-filter" style="max-width:220px;">
+          <option value="open">Waiting for review</option>
+          <option value="planned">Planned</option>
+          <option value="fulfilled">Ready</option>
+          <option value="declined">Declined</option>
+          <option value="withdrawn">Withdrawn</option>
+          <option value="all">All</option>
+        </select>
+      </div>
+      <div id="requests-list"><p class="muted small">Loading…</p></div>
+    </div>
+  </section>
 
   <!-- ══ PAYMENTS ══ -->
   <section class="panel" id="panel-payments">
@@ -311,6 +348,10 @@ import {
   confirmPayment, rejectOrder, refundOrder, expireOrder, isExpired,
   loadPaymentSettings, savePaymentSettings
 } from './assets/js/orders.js';
+import {
+  REQ_STATUS, REQ_META, listAllRequests, setRequestStatus,
+  fulfilRequest, deleteRequest, byDemand
+} from './assets/js/requests.js';
 import { mountChrome, ready, el, fill, esc, fmtDate, fmtDateTime, fmtMoney, toast, emptyState, setCartCount } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
 
@@ -320,7 +361,7 @@ cart.onChange(setCartCount);
 ready();
 
 /* ── tabs ─────────────────────────────────────────────── */
-const PANELS = ['students', 'materials', 'payments', 'maintenance'];
+const PANELS = ['students', 'materials', 'payments', 'requests', 'maintenance'];
 document.querySelectorAll('.tab').forEach(btn => {
   btn.addEventListener('click', () => switchTab(btn.dataset.tab));
 });
@@ -333,6 +374,7 @@ function switchTab(name) {
   if (name === 'students')    loadStudents();
   if (name === 'materials')   loadMaterialsTab();
   if (name === 'payments')    loadPayments();
+  if (name === 'requests')    loadRequests();
   if (name === 'maintenance') checkMigration();
 }
 
@@ -1035,6 +1077,163 @@ function renderLedger(entries) {
       e.note ? el('div', { class: 'list-sub' }, e.note) : null
     )
   )));
+}
+
+/* ── REQUESTS ─────────────────────────────────────────── */
+let _requests = [], _materialsForReq = [];
+
+async function loadRequests() {
+  const [rows, materials] = await Promise.all([
+    listAllRequests().catch(e => { console.error(e); return []; }),
+    listMaterials().catch(() => [])
+  ]);
+  _requests = rows;
+  _materialsForReq = materials;
+
+  const open = rows.filter(r => r.status === REQ_STATUS.OPEN).length;
+  const badge = document.getElementById('req-count');
+  badge.textContent = String(open);
+  badge.hidden = open === 0;
+
+  renderDemand();
+  renderRequests();
+}
+
+function renderDemand() {
+  const list = document.getElementById('demand-list');
+  const groups = byDemand(_requests);
+
+  if (!groups.length) {
+    fill(list, el('p', { class: 'muted small' }, 'Nothing waiting to be made. 🎉'));
+    return;
+  }
+
+  fill(list, ...groups.map(g => {
+    const askers = [...new Set(g.map(r => r.email))];
+    const planned = g.every(r => r.status === REQ_STATUS.PLANNED);
+    return el('div', { class: 'list-item' },
+      el('div', { class: 'list-body' },
+        el('div', { class: 'list-title' },
+          g.length > 1 ? el('span', { class: 'badge badge-red' }, `${g.length}×`) : null,
+          planned ? el('span', { class: 'badge badge-blue' }, 'Planned') : null,
+          (g[0].subject ? g[0].subject + ' · ' : '') + g[0].chapter),
+        el('div', { class: 'list-sub' },
+          `Asked by ${askers.join(', ')} · first asked ${fmtDate(g[0].createdAt)}`)
+      )
+    );
+  }));
+}
+
+document.getElementById('req-filter').addEventListener('change', renderRequests);
+
+function renderRequests() {
+  const filter = document.getElementById('req-filter').value;
+  const list = document.getElementById('requests-list');
+  const rows = filter === 'all' ? _requests : _requests.filter(r => r.status === filter);
+
+  if (!rows.length) {
+    fill(list, el('p', { class: 'muted small' }, 'Nothing here.'));
+    return;
+  }
+
+  fill(list, ...rows.map(r => {
+    const meta = REQ_META[r.status] || { label: r.status, badge: 'badge-grey' };
+
+    const box = el('div', { class: 'order-review' },
+      el('div', { class: 'order-head' },
+        el('span', { class: 'badge ' + meta.badge }, meta.label),
+        el('span', { style: 'font-weight:500' },
+          (r.subject ? r.subject + ' · ' : '') + r.chapter),
+        el('span', { class: 'muted small', style: 'margin-left:auto' },
+          `${r.email} · ${fmtDateTime(r.createdAt)}`)
+      ),
+      r.details
+        ? el('div', { class: 'req-details' }, r.details)
+        : el('div', { class: 'muted small' }, 'No extra detail given.'),
+      r.adminNote
+        ? el('div', { class: 'req-reply' }, el('strong', {}, 'Your reply: '), r.adminNote)
+        : null
+    );
+
+    const actions = el('div', { class: 'list-actions', style: 'margin-top:12px' });
+
+    if (r.status === REQ_STATUS.OPEN) {
+      actions.append(
+        el('button', { class: 'btn btn-primary btn-sm', onclick: () => plan(r) }, 'Plan it'),
+        el('button', { class: 'btn btn-danger btn-sm', onclick: () => decline(r) }, 'Decline')
+      );
+    }
+    if (r.status === REQ_STATUS.OPEN || r.status === REQ_STATUS.PLANNED) {
+      actions.append(el('button', {
+        class: 'btn btn-secondary btn-sm', onclick: () => fulfil(r)
+      }, 'Mark ready…'));
+    }
+    actions.append(el('button', {
+      class: 'btn btn-ghost btn-sm',
+      onclick: async () => {
+        if (!confirm('Delete this request permanently?')) return;
+        try { await deleteRequest(r.id); toast('Request deleted'); loadRequests(); }
+        catch (e) { toast('Error: ' + e.message, 'err'); }
+      }
+    }, 'Delete'));
+
+    box.append(actions);
+    return box;
+  }));
+}
+
+async function plan(r) {
+  const note = prompt(
+    `Mark "${r.chapter}" as planned?\n\nOptional message the student will see:`,
+    'Good idea — this is on my list.');
+  if (note === null) return;
+  try {
+    await setRequestStatus(r.id, REQ_STATUS.PLANNED, note.trim());
+    toast('Marked as planned', 'ok');
+    loadRequests();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+async function decline(r) {
+  const note = prompt(
+    `Decline "${r.chapter}"?\n\nThe student sees this reason:`,
+    'This is outside what I cover at the moment.');
+  if (note === null) return;
+  try {
+    await setRequestStatus(r.id, REQ_STATUS.DECLINED, note.trim());
+    toast('Request declined');
+    loadRequests();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+/** Link the finished material so the student gets a direct link to it. */
+async function fulfil(r) {
+  const options = _materialsForReq
+    .map((m, i) => `${i + 1}. ${m.title}`).join('\n');
+  const pick = prompt(
+    `Which material answers "${r.chapter}"?\n\n${options}\n\n` +
+    `Enter its number, or leave blank to just mark it ready:`, '');
+  if (pick === null) return;
+
+  let materialId = null;
+  const n = parseInt(pick, 10);
+  if (pick.trim() !== '') {
+    if (!Number.isInteger(n) || n < 1 || n > _materialsForReq.length) {
+      toast('That number is not in the list', 'err');
+      return;
+    }
+    materialId = _materialsForReq[n - 1].id;
+  }
+
+  const note = prompt('Optional message the student will see:',
+    materialId ? 'This is ready now — you can open it from your requests page.' : '');
+  if (note === null) return;
+
+  try {
+    await fulfilRequest(r.id, materialId, note.trim());
+    toast('Marked ready', 'ok');
+    loadRequests();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
 }
 
 /* ── MIGRATION ────────────────────────────────────────── */

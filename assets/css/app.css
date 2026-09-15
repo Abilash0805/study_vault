@@ -76,8 +76,10 @@ html:not(.booting) #boot{display:none;}
 .brand img{height:30px;width:30px;border-radius:50%;object-fit:cover;}
 .brand span{color:var(--ink);}
 
+/* Six items plus the brand and user chip need real room — below this
+   width the drawer is less cramped than a squeezed-in nav row. */
 .nav{display:none;align-items:center;gap:2px;margin-left:12px;flex:1;}
-@media(min-width:860px){.nav{display:flex;}}
+@media(min-width:1040px){.nav{display:flex;}}
 .nav-link{
   display:inline-flex;align-items:center;gap:7px;
   padding:8px 13px;border-radius:var(--radius-xs);
@@ -155,7 +157,7 @@ html:not(.booting) #boot{display:none;}
   cursor:pointer;padding:6px 8px;border-radius:var(--radius-xs);line-height:1;
 }
 .hamburger:hover{background:var(--sunken);}
-@media(min-width:860px){.hamburger{display:none;}}
+@media(min-width:1040px){.hamburger{display:none;}}
 
 /* mobile drawer */
 .drawer{

@@ -146,6 +146,35 @@ service cloud.firestore {
       allow update, delete: if false;
     }
 
+    // ── MATERIAL REQUESTS ───────────────────────────────────
+    // A student asks for a chapter; the admin triages it. Private
+    // to author and admin, so nobody can read what other students
+    // are stuck on, or who asked for what.
+    match /requests/{id} {
+      allow read: if isAdmin() || (signedIn() && resource.data.email == callerEmail());
+
+      allow create: if signedIn()
+        && request.resource.data.email == callerEmail()
+        && request.resource.data.status == 'open'
+        && request.resource.data.chapter is string
+        && request.resource.data.chapter.size() > 0
+        && request.resource.data.chapter.size() <= 140
+        && request.resource.data.get('subject', '').size() <= 60
+        && request.resource.data.get('details', '').size() <= 1000
+        // the admin's side of the conversation can't be pre-filled
+        && !request.resource.data.keys().hasAny(['adminNote', 'materialId', 'fulfilledAt']);
+
+      // The student's only write after creating: withdrawing it.
+      allow update: if signedIn()
+        && resource.data.email == callerEmail()
+        && resource.data.status == 'open'
+        && request.resource.data.status == 'withdrawn'
+        && request.resource.data.diff(resource.data).affectedKeys()
+             .hasOnly(['status', 'updatedAt']);
+
+      allow update, delete: if isAdmin();
+    }
+
     // Anything not matched above is denied. New collections must be
     // added deliberately rather than inheriting access by accident.
     match /{document=**} {
