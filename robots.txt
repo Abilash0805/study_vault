@@ -18,4 +18,4 @@ Disallow: /firestore.rules
 # CSS and JS are deliberately NOT blocked. Google renders pages before
 # ranking them, and blocking assets makes the page look broken to it.
 
-Sitemap: https://prepdeck1.vercel.app/sitemap.xml
+Sitemap: https://chapterkit.vercel.app/sitemap.xml
