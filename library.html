@@ -1,0 +1,203 @@
+<!DOCTYPE html>
+<html lang="en" class="booting">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>My Materials — StudyVault</title>
+<meta name="robots" content="noindex">
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6d5ef9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+
+<div id="boot"><div class="spinner"></div><span class="boot-text">Loading your library…</span></div>
+
+<div id="site-header"></div>
+
+<main class="page">
+  <div class="page-head">
+    <h1 id="greeting">My Materials</h1>
+    <p id="subhead">Everything assigned to your account, organised into folders.</p>
+  </div>
+
+  <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
+
+  <div id="content">
+    <div class="empty"><span class="empty-ico">⏳</span><strong>Loading…</strong></div>
+  </div>
+</main>
+
+<script type="module">
+import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
+import { listMaterials, listFolders, kindIcon } from './assets/js/content.js';
+import { mountChrome, ready, el, fill, esc, fmtDate, emptyState, toast } from './assets/js/ui.js';
+
+const { user, isAdmin, student } = await requireAuth();
+
+mountChrome({
+  active: 'library',
+  user, isAdmin,
+  onSignOut: () => doSignOut()
+});
+
+const first = (user.displayName || user.email).split(/[\s@]/)[0];
+document.getElementById('greeting').textContent = `Hello, ${first} 👋`;
+if (isAdmin) {
+  document.getElementById('subhead').textContent =
+    'Viewing as admin — every material in the vault is visible here.';
+}
+
+const contentEl = document.getElementById('content');
+const crumbsEl  = document.getElementById('crumbs');
+
+let folders = {};        // id -> { name, parentId }
+let materials = [];      // metadata only
+let visibleFolders = null; // Set of folder ids worth showing (students only)
+
+/** Folders that contain something the student can actually open. */
+function computeVisibleFolders() {
+  const set = new Set();
+  for (const m of materials) {
+    let fid = m.folderId;
+    while (fid) { set.add(fid); fid = folders[fid]?.parentId || null; }
+  }
+  return set;
+}
+
+function currentFolder() {
+  const f = new URLSearchParams(location.search).get('folder');
+  return f && folders[f] ? f : null;
+}
+
+function goFolder(id, push = true) {
+  const url = id ? `library.html?folder=${encodeURIComponent(id)}` : 'library.html';
+  if (push) history.pushState({ folder: id || null }, '', url);
+  render();
+}
+window.addEventListener('popstate', () => render());
+
+function renderCrumbs(folderId) {
+  const chain = [];
+  let cur = folderId;
+  while (cur) { chain.unshift(cur); cur = folders[cur]?.parentId || null; }
+
+  const nodes = [
+    el('button', {
+      class: 'crumb', disabled: chain.length === 0,
+      onclick: () => goFolder(null)
+    }, '🏠 Library')
+  ];
+
+  chain.forEach((fid, i) => {
+    const last = i === chain.length - 1;
+    nodes.push(el('span', { class: 'crumb-sep' }, '›'));
+    nodes.push(el('button', {
+      class: 'crumb', disabled: last,
+      onclick: () => goFolder(fid)
+    }, folders[fid]?.name || '…'));
+  });
+
+  fill(crumbsEl, ...nodes);
+}
+
+function folderTile(fid) {
+  const subCount = Object.values(folders).filter(f => (f.parentId || null) === fid).length;
+  const fileCount = materials.filter(m => m.folderId === fid).length;
+  const bits = [];
+  if (subCount)  bits.push(`${subCount} folder${subCount !== 1 ? 's' : ''}`);
+  if (fileCount) bits.push(`${fileCount} file${fileCount !== 1 ? 's' : ''}`);
+
+  return el('button', { class: 'tile tile-folder', onclick: () => goFolder(fid) },
+    el('span', { class: 'tile-ico' }, '📁'),
+    el('div', { class: 'tile-title' }, folders[fid].name),
+    el('div', { class: 'tile-meta' }, bits.join(' · ') || 'Empty')
+  );
+}
+
+function materialTile(m) {
+  return el('a', { class: 'tile', href: `viewer.html?id=${encodeURIComponent(m.id)}` },
+    el('span', { class: 'tile-ico' }, kindIcon(m.kind, m.id)),
+    el('div', { class: 'tile-title' }, m.title),
+    el('div', { class: 'tile-meta' }, fmtDate(m.createdAt))
+  );
+}
+
+function section(title, tiles) {
+  return el('section', { class: 'section' },
+    el('div', { class: 'section-head' }, el('h2', {}, title), el('hr', {})),
+    el('div', { class: 'grid' }, ...tiles)
+  );
+}
+
+function render() {
+  const folderId = currentFolder();
+  renderCrumbs(folderId);
+
+  let subIds = Object.keys(folders).filter(f => (folders[f].parentId || null) === folderId);
+  if (!isAdmin && visibleFolders) subIds = subIds.filter(f => visibleFolders.has(f));
+  subIds.sort((a, b) => folders[a].name.localeCompare(folders[b].name));
+
+  const here = materials.filter(m => m.folderId === folderId);
+  const frag = document.createDocumentFragment();
+
+  if (subIds.length) frag.append(section('Folders', subIds.map(folderTile)));
+
+  if (folderId === null) {
+    // At the root, group loose materials by subject tag.
+    const groups = {};
+    for (const m of here) (groups[(m.tag || '').trim() || 'General'] ||= []).push(m);
+    for (const tag of Object.keys(groups).sort()) {
+      frag.append(section(tag, groups[tag].map(materialTile)));
+    }
+  } else if (here.length) {
+    frag.append(section('Files', here.map(materialTile)));
+  }
+
+  if (!subIds.length && !here.length) {
+    frag.append(folderId === null
+      ? emptyState('📭', 'Nothing here yet',
+          isAdmin ? 'Add materials from the Admin panel.'
+                  : 'No materials have been assigned to your account yet. Contact your instructor.')
+      : emptyState('📂', 'This folder is empty', null));
+  }
+
+  fill(contentEl, frag);
+}
+
+try {
+  const [allMaterials, allFolders] = await Promise.all([listMaterials(), listFolders()]);
+  folders = allFolders;
+
+  const allowed = grantedIds(isAdmin, student);
+  materials = allowed === null
+    ? allMaterials
+    : allMaterials.filter(m => allowed.has(m.id));
+
+  if (!isAdmin) visibleFolders = computeVisibleFolders();
+
+  render();
+} catch (e) {
+  console.error('library load:', e);
+  fill(contentEl, emptyState('⚠️', 'Could not load your library', e.message || 'Please refresh and try again.'));
+  toast('Failed to load library', 'err');
+} finally {
+  ready();
+}
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>

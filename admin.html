@@ -1,0 +1,741 @@
+<!DOCTYPE html>
+<html lang="en" class="booting">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Admin — StudyVault</title>
+<meta name="robots" content="noindex">
+
+<meta name="theme-color" content="#6d5ef9">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/app.css">
+
+<style>
+  .folder-row{
+    display:flex;align-items:center;gap:8px;padding:8px 0;
+    border-bottom:1px solid var(--border);font-size:.85rem;
+  }
+  .folder-row:last-child{border-bottom:none;}
+  .folder-row .f-name{flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;}
+  .move-select{
+    font-family:inherit;font-size:.72rem;border:1px solid var(--border);
+    border-radius:6px;padding:4px 6px;background:var(--sunken);color:var(--ink2);max-width:150px;
+  }
+  .pill{
+    display:inline-flex;align-items:center;gap:4px;background:var(--accent-soft);
+    color:#5b21b6;border-radius:4px;padding:2px 8px;font-size:.72rem;font-weight:500;
+  }
+  .pill button{
+    cursor:pointer;color:#7c3aed;font-size:.85rem;line-height:1;
+    background:none;border:none;font-family:inherit;padding:0 0 0 3px;
+  }
+  .pill button:hover{color:var(--danger);}
+  .pills{display:flex;flex-wrap:wrap;gap:5px;margin-top:7px;}
+  .upload-label{
+    display:flex;align-items:center;gap:11px;background:var(--sunken);
+    border:1.5px dashed var(--border-strong);border-radius:var(--radius-sm);
+    padding:12px 15px;cursor:pointer;transition:border-color .2s;width:100%;
+  }
+  .upload-label:hover{border-color:var(--accent);}
+  .src-tabs{
+    display:flex;gap:3px;background:var(--sunken);border:1px solid var(--border);
+    border-radius:var(--radius-sm);padding:4px;margin-bottom:14px;
+  }
+  .src-tab{
+    flex:1;background:none;border:none;border-radius:7px;padding:9px 12px;
+    font-family:inherit;font-size:.82rem;cursor:pointer;color:var(--muted);
+  }
+  .src-tab.active{background:var(--card);color:var(--ink);font-weight:500;box-shadow:0 1px 4px rgba(0,0,0,.08);}
+  .callout{
+    border-radius:var(--radius-sm);padding:14px 16px;font-size:.84rem;
+    line-height:1.65;margin-bottom:14px;border:1px solid transparent;
+  }
+  .callout-warn{background:var(--warn-soft);border-color:#fde68a;color:#7c4a03;}
+  .callout-ok{background:var(--success-soft);border-color:#a7f3d0;color:var(--success-ink);}
+  .callout strong{font-weight:500;}
+  .status-dot{
+    width:8px;height:8px;border-radius:50%;background:var(--success-soft);
+    border:1.5px solid var(--success);flex-shrink:0;margin-top:6px;
+  }
+</style>
+</head>
+<body>
+
+<div id="boot"><div class="spinner"></div><span class="boot-text">Checking access…</span></div>
+
+<div id="site-header"></div>
+
+<main class="page page-narrow">
+  <div class="page-head row-between">
+    <div>
+      <h1>Admin Panel</h1>
+      <p>Manage students, materials and access.</p>
+    </div>
+    <a class="btn btn-secondary btn-sm" href="library.html">← Library</a>
+  </div>
+
+  <div class="tabs" role="tablist">
+    <button class="tab active" data-tab="students" role="tab">Students &amp; Access</button>
+    <button class="tab" data-tab="materials" role="tab">Study Materials</button>
+    <button class="tab" data-tab="maintenance" role="tab">Maintenance</button>
+  </div>
+
+  <!-- ══ STUDENTS ══ -->
+  <section class="panel active" id="panel-students">
+    <div class="card">
+      <h2>Add a student</h2>
+      <div class="form-row">
+        <input class="input" type="email" id="s-email" placeholder="student@gmail.com" autocomplete="off">
+        <input class="input" type="text" id="s-name" placeholder="Name (optional)">
+        <button class="btn btn-primary" id="btn-add-student">Add student</button>
+      </div>
+      <p class="hint">Adding a student doesn't grant any materials yet — assign them below.</p>
+    </div>
+
+    <div class="card">
+      <h2>Students</h2>
+      <div id="students-list"><p class="muted small">Loading…</p></div>
+    </div>
+  </section>
+
+  <!-- ══ MATERIALS ══ -->
+  <section class="panel" id="panel-materials">
+    <div class="card">
+      <h2>📁 Folders</h2>
+      <div class="form-row">
+        <input class="input" type="text" id="f-name" placeholder="Folder name">
+        <select class="select" id="f-parent"><option value="">— Root —</option></select>
+        <button class="btn btn-primary" id="btn-create-folder">Create</button>
+      </div>
+      <p class="hint">Students only see folders containing something assigned to them.</p>
+      <div id="folders-list" style="margin-top:12px;"><p class="muted small">Loading…</p></div>
+    </div>
+
+    <div class="card">
+      <h2>Add a study material</h2>
+      <div class="form-row">
+        <input class="input" type="text" id="m-title" placeholder="Title (e.g. Chapter 1: Algebra)">
+        <input class="input" type="text" id="m-tag" placeholder="Subject / tag">
+      </div>
+      <div class="form-row">
+        <select class="select" id="m-folder"><option value="">— No folder (root) —</option></select>
+      </div>
+
+      <div class="src-tabs">
+        <button class="src-tab active" data-src="upload">📄 Upload file</button>
+        <button class="src-tab" data-src="github">🐙 GitHub URL</button>
+      </div>
+
+      <div id="src-upload">
+        <div class="stack">
+          <label class="upload-label">
+            <span style="font-size:1.2rem;">📄</span>
+            <span class="small muted" id="upload-text">Click to choose an HTML, JSX, TSX or PDF file…</span>
+            <input type="file" id="m-file" accept=".html,.jsx,.tsx,.pdf,text/html,application/pdf" hidden>
+          </label>
+          <button class="btn btn-primary btn-block" id="btn-upload">Upload &amp; add</button>
+        </div>
+        <div id="progress-wrap" hidden style="margin-top:10px;">
+          <div class="progress"><div class="progress-bar" id="progress-bar"></div></div>
+          <p class="hint" id="progress-text">Reading file…</p>
+        </div>
+        <p class="hint">
+          Stored in Firestore. Text files up to ~900 KB; <strong>PDFs up to 700 KB</strong>
+          (base64 inflates them ~33% and Firestore caps documents at 1 MiB).
+          For bigger PDFs use the GitHub URL tab. JSX/TSX must define a component named <strong>App</strong>.
+        </p>
+      </div>
+
+      <div id="src-github" hidden>
+        <div class="stack">
+          <input class="input" type="url" id="m-url"
+                 placeholder="https://raw.githubusercontent.com/user/repo/main/file.pdf">
+          <button class="btn btn-primary btn-block" id="btn-add-url">Add GitHub URL</button>
+        </div>
+        <p class="hint">
+          Paste a <strong>raw.githubusercontent.com</strong> link from a <strong>public</strong> repo.
+          <strong>.jsx</strong>/<strong>.tsx</strong> render as React; <strong>.pdf</strong> opens in the
+          secure PDF reader. Fetched on open — no size limit.
+        </p>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>All materials</h2>
+      <div id="materials-list"><p class="muted small">Loading…</p></div>
+    </div>
+  </section>
+
+  <!-- ══ MAINTENANCE ══ -->
+  <section class="panel" id="panel-maintenance">
+    <div class="card">
+      <h2>🔐 Content security migration</h2>
+      <div id="migrate-status"><p class="muted small">Checking…</p></div>
+      <p class="hint">
+        Material content is moving out of <span class="mono">materials</span> into
+        <span class="mono">materialContent</span>, so Firestore rules can restrict it to
+        students who actually have the material. Metadata (title, tag, folder) stays put
+        so the catalogue is still browsable.
+        <br><br>
+        This copies content first and only removes the original after the copy is verified.
+        It is safe to run more than once.
+      </p>
+      <div class="stack" style="margin-top:12px;">
+        <button class="btn btn-primary" id="btn-migrate" disabled>Run migration</button>
+        <div id="migrate-progress" hidden>
+          <div class="progress"><div class="progress-bar" id="migrate-bar"></div></div>
+          <p class="hint" id="migrate-text"></p>
+        </div>
+      </div>
+    </div>
+  </section>
+</main>
+
+<!-- ══ ASSIGN MODAL ══ -->
+<div class="modal-bg" id="assign-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="assign-title">
+    <h3 id="assign-title">Assign materials</h3>
+    <p class="modal-sub" id="assign-sub"></p>
+    <div class="modal-body" id="assign-list"></div>
+    <div class="modal-foot">
+      <button class="btn btn-secondary" id="assign-cancel">Cancel</button>
+      <button class="btn btn-primary" id="assign-save">Save</button>
+    </div>
+  </div>
+</div>
+
+<script type="module">
+import { requireAuth, doSignOut } from './assets/js/session.js';
+import {
+  db, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc,
+  collection, getDocs, arrayRemove, deleteField
+} from './assets/js/firebase.js';
+import { listFolders, inferKind, CONTENT_FIELDS, hasInlineContent } from './assets/js/content.js';
+import { mountChrome, ready, el, fill, esc, fmtDate, toast, emptyState } from './assets/js/ui.js';
+
+const { user, isAdmin } = await requireAuth({ adminOnly: true });
+mountChrome({ active: 'admin', user, isAdmin, onSignOut: () => doSignOut() });
+ready();
+
+/* ── tabs ─────────────────────────────────────────────── */
+const PANELS = ['students', 'materials', 'maintenance'];
+document.querySelectorAll('.tab').forEach(btn => {
+  btn.addEventListener('click', () => switchTab(btn.dataset.tab));
+});
+function switchTab(name) {
+  PANELS.forEach(p => {
+    document.getElementById('panel-' + p).classList.toggle('active', p === name);
+  });
+  document.querySelectorAll('.tab').forEach(b =>
+    b.classList.toggle('active', b.dataset.tab === name));
+  if (name === 'students')    loadStudents();
+  if (name === 'materials')   loadMaterialsTab();
+  if (name === 'maintenance') checkMigration();
+}
+
+/* ── STUDENTS ─────────────────────────────────────────── */
+const studentsList = document.getElementById('students-list');
+
+document.getElementById('btn-add-student').addEventListener('click', async () => {
+  const email = document.getElementById('s-email').value.trim().toLowerCase();
+  const name  = document.getElementById('s-name').value.trim();
+  if (!email.includes('@')) { toast('Enter a valid email', 'err'); return; }
+  try {
+    await setDoc(doc(db, 'students', email),
+      { email, name, addedAt: Date.now() }, { merge: true });
+    document.getElementById('s-email').value = '';
+    document.getElementById('s-name').value = '';
+    toast('Student added', 'ok');
+    loadStudents();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+});
+
+async function loadStudents() {
+  fill(studentsList, el('p', { class: 'muted small' }, 'Loading…'));
+  const [stuSnap, matSnap] = await Promise.all([
+    getDocs(collection(db, 'students')),
+    getDocs(collection(db, 'materials'))
+  ]);
+  const matMap = {};
+  matSnap.forEach(d => { matMap[d.id] = d.data(); });
+
+  if (stuSnap.empty) {
+    fill(studentsList, el('p', { class: 'muted small' }, 'No students yet.'));
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  stuSnap.forEach(d => {
+    const s = d.data();
+    const files = s.files || [];
+
+    const pills = files.map(fid => {
+      const m = matMap[fid];
+      if (!m) return null;
+      return el('span', { class: 'pill' }, m.title || fid,
+        el('button', {
+          title: 'Revoke', onclick: () => revoke(d.id, fid)
+        }, '×'));
+    }).filter(Boolean);
+
+    frag.append(el('div', { class: 'list-item' },
+      el('div', { class: 'status-dot' }),
+      el('div', { class: 'list-body' },
+        el('div', { class: 'list-title' }, s.email,
+          s.name ? el('span', { class: 'muted small' }, `(${s.name})`) : null),
+        el('div', { class: 'list-sub' }, `${files.length} material${files.length !== 1 ? 's' : ''} assigned`),
+        el('div', { class: 'pills' },
+          pills.length ? pills : el('span', { class: 'muted small' }, 'Nothing assigned yet'))
+      ),
+      el('div', { class: 'list-actions' },
+        el('button', { class: 'btn btn-secondary btn-sm', onclick: () => openAssign(d.id, s.name, files, matMap) }, 'Assign'),
+        el('button', { class: 'btn btn-danger btn-sm', onclick: () => removeStudent(d.id) }, 'Remove')
+      )
+    ));
+  });
+  fill(studentsList, frag);
+}
+
+async function revoke(email, fileId) {
+  try {
+    await updateDoc(doc(db, 'students', email), { files: arrayRemove(fileId) });
+    toast('Access revoked');
+    loadStudents();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+async function removeStudent(email) {
+  if (!confirm(`Remove ${email} and revoke all their access?`)) return;
+  try {
+    await deleteDoc(doc(db, 'students', email));
+    toast('Student removed');
+    loadStudents();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+/* ── ASSIGN MODAL ─────────────────────────────────────── */
+const modal = document.getElementById('assign-modal');
+let assignEmail = '';
+
+function openAssign(email, name, current, matMap) {
+  assignEmail = email;
+  document.getElementById('assign-sub').textContent =
+    `${name || email} · tick the materials this student should see`;
+
+  const entries = Object.entries(matMap);
+  const body = document.getElementById('assign-list');
+
+  if (!entries.length) {
+    fill(body, el('p', { class: 'muted small' }, 'No materials yet.'));
+  } else {
+    fill(body, ...entries.map(([id, m]) =>
+      el('label', { class: 'check-item' },
+        el('input', { type: 'checkbox', value: id, ...(current.includes(id) ? { checked: true } : {}) }),
+        el('span', { class: 'check-label' }, m.title || id),
+        m.tag ? el('span', { class: 'badge badge-grey' }, m.tag) : null
+      )));
+  }
+  modal.classList.add('open');
+}
+
+function closeAssign() { modal.classList.remove('open'); }
+document.getElementById('assign-cancel').addEventListener('click', closeAssign);
+modal.addEventListener('click', e => { if (e.target === modal) closeAssign(); });
+
+document.getElementById('assign-save').addEventListener('click', async () => {
+  const picked = [...document.querySelectorAll('#assign-list input:checked')].map(c => c.value);
+  try {
+    await updateDoc(doc(db, 'students', assignEmail), { files: picked });
+    toast(`${picked.length} material(s) assigned`, 'ok');
+    closeAssign();
+    loadStudents();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+});
+
+/* ── FOLDERS ──────────────────────────────────────────── */
+function descendants(map, rootId) {
+  const kids = {};
+  Object.entries(map).forEach(([id, f]) => ((kids[f.parentId || ''] ||= []).push(id)));
+  const out = new Set();
+  (function walk(id) { (kids[id] || []).forEach(c => { out.add(c); walk(c); }); })(rootId);
+  return out;
+}
+
+function folderOptions(map, selected, excludeId) {
+  const kids = {};
+  Object.entries(map).forEach(([id, f]) => ((kids[f.parentId || ''] ||= []).push(id)));
+  const skip = excludeId ? descendants(map, excludeId) : new Set();
+  const opts = [el('option', { value: '' }, '— Root —')];
+  (function walk(parent, depth) {
+    (kids[parent] || [])
+      .sort((a, b) => map[a].name.localeCompare(map[b].name))
+      .forEach(id => {
+        if (id === excludeId || skip.has(id)) return;
+        opts.push(el('option', {
+          value: id, ...(id === selected ? { selected: true } : {})
+        }, ' '.repeat(depth * 2) + '📁 ' + map[id].name));
+        walk(id, depth + 1);
+      });
+  })('', 0);
+  return opts;
+}
+
+document.getElementById('btn-create-folder').addEventListener('click', async () => {
+  const name = document.getElementById('f-name').value.trim();
+  if (!name) { toast('Folder name required', 'err'); return; }
+  try {
+    await addDoc(collection(db, 'folders'), {
+      name, parentId: document.getElementById('f-parent').value || null, createdAt: Date.now()
+    });
+    document.getElementById('f-name').value = '';
+    toast('Folder created', 'ok');
+    loadMaterialsTab();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+});
+
+async function renameFolder(id, current) {
+  const name = prompt('Rename folder', current);
+  if (!name?.trim() || name.trim() === current) return;
+  try {
+    await updateDoc(doc(db, 'folders', id), { name: name.trim() });
+    toast('Renamed', 'ok');
+    loadMaterialsTab();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+async function deleteFolder(id, data) {
+  if (!confirm(`Delete folder "${data.name}"?\n\nSubfolders and files inside move up one level.`)) return;
+  try {
+    const parent = data.parentId || null;
+    const [fs, ms] = await Promise.all([
+      getDocs(collection(db, 'folders')), getDocs(collection(db, 'materials'))
+    ]);
+    const ops = [];
+    fs.forEach(d => { if ((d.data().parentId || null) === id) ops.push(updateDoc(doc(db, 'folders', d.id), { parentId: parent })); });
+    ms.forEach(d => { if ((d.data().folderId || null) === id) ops.push(updateDoc(doc(db, 'materials', d.id), { folderId: parent })); });
+    await Promise.all(ops);
+    await deleteDoc(doc(db, 'folders', id));
+    toast('Folder deleted');
+    loadMaterialsTab();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+/* ── MATERIALS ────────────────────────────────────────── */
+document.querySelectorAll('.src-tab').forEach(btn => {
+  btn.addEventListener('click', () => {
+    const isUpload = btn.dataset.src === 'upload';
+    document.getElementById('src-upload').hidden = !isUpload;
+    document.getElementById('src-github').hidden = isUpload;
+    document.querySelectorAll('.src-tab').forEach(b =>
+      b.classList.toggle('active', b === btn));
+  });
+});
+
+const fileInput = document.getElementById('m-file');
+fileInput.addEventListener('change', () => {
+  document.getElementById('upload-text').textContent =
+    fileInput.files[0]?.name || 'Click to choose an HTML, JSX, TSX or PDF file…';
+});
+
+function readForm() {
+  const title = document.getElementById('m-title').value.trim();
+  if (!title) { toast('Title is required', 'err'); return null; }
+  return {
+    title,
+    tag: document.getElementById('m-tag').value.trim(),
+    folderId: document.getElementById('m-folder').value || null
+  };
+}
+
+function clearForm() {
+  document.getElementById('m-title').value = '';
+  document.getElementById('m-tag').value = '';
+  document.getElementById('m-url').value = '';
+  fileInput.value = '';
+  document.getElementById('upload-text').textContent =
+    'Click to choose an HTML, JSX, TSX or PDF file…';
+}
+
+/** Writes metadata + content as two documents (content is the gated one). */
+async function createMaterial(meta, content) {
+  const ref = await addDoc(collection(db, 'materials'), {
+    ...meta, kind: inferKind(content), createdAt: Date.now()
+  });
+  try {
+    await setDoc(doc(db, 'materialContent', ref.id), content);
+  } catch (e) {
+    // Don't leave a metadata row pointing at content that failed to save.
+    await deleteDoc(doc(db, 'materials', ref.id)).catch(() => {});
+    throw e;
+  }
+  return ref.id;
+}
+
+document.getElementById('btn-upload').addEventListener('click', async () => {
+  const meta = readForm();
+  if (!meta) return;
+
+  const file = fileInput.files[0];
+  if (!file) { toast('Choose a file first', 'err'); return; }
+
+  const ext = file.name.toLowerCase().split('.').pop();
+  if (!['html', 'jsx', 'tsx', 'pdf'].includes(ext)) {
+    toast('Only .html, .jsx, .tsx or .pdf', 'err'); return;
+  }
+  const isPdf = ext === 'pdf';
+  if (isPdf && file.size > 700 * 1024) {
+    toast('PDF too large — keep under 700 KB or use a GitHub URL', 'err'); return;
+  }
+  if (!isPdf && file.size > 900 * 1024) {
+    toast('File too large — keep under 900 KB', 'err'); return;
+  }
+
+  const wrap = document.getElementById('progress-wrap');
+  const bar  = document.getElementById('progress-bar');
+  const txt  = document.getElementById('progress-text');
+  wrap.hidden = false; bar.style.width = '30%'; txt.textContent = 'Reading file…';
+
+  try {
+    const text = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = e => resolve(e.target.result);
+      r.onerror = () => reject(new Error('Could not read the file'));
+      if (isPdf) r.readAsDataURL(file); else r.readAsText(file);
+    });
+
+    bar.style.width = '70%'; txt.textContent = 'Saving…';
+
+    const content = isPdf
+      ? { pdfContent: text.slice(text.indexOf(',') + 1), sourceType: 'inline-pdf' }
+      : ext === 'html'
+        ? { htmlContent: text, sourceType: 'inline' }
+        : { jsxContent: text, sourceType: 'inline-jsx' };
+
+    await createMaterial(meta, content);
+
+    bar.style.width = '100%';
+    wrap.hidden = true; bar.style.width = '0%';
+    clearForm();
+    toast('Material added', 'ok');
+    loadMaterialsList();
+  } catch (e) {
+    wrap.hidden = true;
+    toast('Error: ' + e.message, 'err');
+  }
+});
+
+document.getElementById('btn-add-url').addEventListener('click', async () => {
+  const meta = readForm();
+  if (!meta) return;
+  const url = document.getElementById('m-url').value.trim();
+  if (!url.startsWith('https://raw.githubusercontent.com/')) {
+    toast('URL must start with https://raw.githubusercontent.com/', 'err'); return;
+  }
+  try {
+    await createMaterial(meta, { url, sourceType: 'github' });
+    clearForm();
+    toast('Material added', 'ok');
+    loadMaterialsList();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+});
+
+async function deleteMaterial(id, title) {
+  if (!confirm(`Delete "${title}"?\n\nThis also removes it from every student.`)) return;
+  try {
+    await deleteDoc(doc(db, 'materialContent', id)).catch(() => {});
+    await deleteDoc(doc(db, 'materials', id));
+    const stu = await getDocs(collection(db, 'students'));
+    await Promise.all(stu.docs
+      .filter(d => (d.data().files || []).includes(id))
+      .map(d => updateDoc(doc(db, 'students', d.id), { files: arrayRemove(id) })));
+    toast('Material deleted');
+    loadMaterialsList();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+let foldersCache = {};
+
+async function loadMaterialsTab() {
+  foldersCache = await listFolders();
+  renderFolders();
+  fill(document.getElementById('f-parent'), ...folderOptions(foldersCache, '', null));
+  const sel = document.getElementById('m-folder');
+  fill(sel, ...folderOptions(foldersCache, sel.value, null));
+  await loadMaterialsList();
+}
+
+function renderFolders() {
+  const list = document.getElementById('folders-list');
+  const ids = Object.keys(foldersCache);
+  if (!ids.length) {
+    fill(list, el('p', { class: 'muted small' }, 'No folders yet.'));
+    return;
+  }
+  const kids = {};
+  ids.forEach(id => ((kids[foldersCache[id].parentId || ''] ||= []).push(id)));
+
+  const frag = document.createDocumentFragment();
+  (function walk(parent, depth) {
+    (kids[parent] || [])
+      .sort((a, b) => foldersCache[a].name.localeCompare(foldersCache[b].name))
+      .forEach(id => {
+        frag.append(el('div', { class: 'folder-row', style: `padding-left:${depth * 18}px` },
+          el('span', { class: 'f-name' }, '📁 ' + foldersCache[id].name),
+          el('button', { class: 'btn btn-secondary btn-sm', onclick: () => renameFolder(id, foldersCache[id].name) }, 'Rename'),
+          el('button', { class: 'btn btn-danger btn-sm', onclick: () => deleteFolder(id, foldersCache[id]) }, 'Delete')
+        ));
+        walk(id, depth + 1);
+      });
+  })('');
+  fill(list, frag);
+}
+
+function sizeBadge(m, contentMap) {
+  const c = contentMap[m.id] || (hasInlineContent(m) ? m : null);
+  if (!c) return el('span', { class: 'badge badge-amber' }, '⚠️ No content');
+  if (c.pdfContent)  return el('span', { class: 'badge badge-red' }, '📕 PDF');
+  if (c.jsxContent)  return el('span', { class: 'badge badge-blue' }, '⚛️ JSX');
+  if (c.htmlContent) return el('span', { class: 'badge badge-violet' }, '📄 HTML');
+  if (c.url)         return el('span', { class: 'badge badge-green' }, '🐙 GitHub');
+  return el('span', { class: 'badge badge-amber' }, '⚠️ No content');
+}
+
+async function loadMaterialsList() {
+  const list = document.getElementById('materials-list');
+  fill(list, el('p', { class: 'muted small' }, 'Loading…'));
+
+  const [matSnap, contentSnap] = await Promise.all([
+    getDocs(collection(db, 'materials')),
+    getDocs(collection(db, 'materialContent')).catch(() => ({ forEach: () => {} }))
+  ]);
+
+  const contentMap = {};
+  contentSnap.forEach(d => { contentMap[d.id] = d.data(); });
+
+  if (matSnap.empty) {
+    fill(list, el('p', { class: 'muted small' }, 'No materials yet.'));
+    return;
+  }
+
+  const frag = document.createDocumentFragment();
+  matSnap.forEach(d => {
+    const m = d.data();
+    const legacy = hasInlineContent(m);
+    frag.append(el('div', { class: 'list-item' },
+      el('div', { class: 'list-body' },
+        el('div', { class: 'list-title' }, m.title || '(untitled)',
+          m.tag ? el('span', { class: 'badge badge-grey' }, m.tag) : null,
+          sizeBadge({ id: d.id, ...m }, contentMap),
+          legacy ? el('span', { class: 'badge badge-amber' }, 'Needs migration') : null),
+        el('div', { class: 'list-sub' }, 'Added ' + fmtDate(m.createdAt))
+      ),
+      el('div', { class: 'list-actions' },
+        el('select', {
+          class: 'move-select',
+          onchange: e => moveMaterial(d.id, e.target.value)
+        }, ...folderOptions(foldersCache, m.folderId || '', null)),
+        el('button', { class: 'btn btn-danger btn-sm', onclick: () => deleteMaterial(d.id, m.title) }, 'Delete')
+      )
+    ));
+  });
+  fill(list, frag);
+}
+
+async function moveMaterial(id, folderId) {
+  try {
+    await updateDoc(doc(db, 'materials', id), { folderId: folderId || null });
+    toast('Moved', 'ok');
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+/* ── MIGRATION ────────────────────────────────────────── */
+const migrateBtn = document.getElementById('btn-migrate');
+
+async function checkMigration() {
+  const box = document.getElementById('migrate-status');
+  fill(box, el('p', { class: 'muted small' }, 'Checking…'));
+  try {
+    const snap = await getDocs(collection(db, 'materials'));
+    const pending = snap.docs.filter(d => hasInlineContent(d.data()));
+    if (!pending.length) {
+      fill(box, el('div', { class: 'callout callout-ok' },
+        el('strong', {}, '✓ All content is migrated. '),
+        'Every material stores its content in the gated collection.'));
+      migrateBtn.disabled = true;
+      migrateBtn.textContent = 'Nothing to migrate';
+    } else {
+      fill(box, el('div', { class: 'callout callout-warn' },
+        el('strong', {}, `${pending.length} material${pending.length !== 1 ? 's' : ''} still store content inline. `),
+        'Until this runs, any signed-in user can read that content directly from Firestore.'));
+      migrateBtn.disabled = false;
+      migrateBtn.textContent = `Migrate ${pending.length} material${pending.length !== 1 ? 's' : ''}`;
+    }
+  } catch (e) {
+    fill(box, el('div', { class: 'callout callout-warn' }, 'Could not check: ' + e.message));
+  }
+}
+
+migrateBtn.addEventListener('click', async () => {
+  const wrap = document.getElementById('migrate-progress');
+  const bar  = document.getElementById('migrate-bar');
+  const txt  = document.getElementById('migrate-text');
+  migrateBtn.disabled = true;
+  wrap.hidden = false;
+
+  try {
+    const snap = await getDocs(collection(db, 'materials'));
+    const pending = snap.docs.filter(d => hasInlineContent(d.data()));
+    let done = 0, failed = 0;
+
+    for (const d of pending) {
+      const m = d.data();
+      const content = {};
+      for (const f of CONTENT_FIELDS) if (m[f] !== undefined) content[f] = m[f];
+      if (m.sourceType) content.sourceType = m.sourceType;
+
+      txt.textContent = `Migrating "${m.title || d.id}" (${done + 1}/${pending.length})…`;
+
+      try {
+        // 1. copy, 2. verify the copy landed, 3. only then drop the original
+        await setDoc(doc(db, 'materialContent', d.id), content, { merge: true });
+
+        const check = await getDoc(doc(db, 'materialContent', d.id));
+        const ok = check.exists() &&
+          CONTENT_FIELDS.every(f => content[f] === undefined || check.data()[f] !== undefined);
+        if (!ok) throw new Error('copy could not be verified');
+
+        const strip = {};
+        for (const f of CONTENT_FIELDS) if (m[f] !== undefined) strip[f] = deleteField();
+        await updateDoc(doc(db, 'materials', d.id), { ...strip, kind: inferKind(content) });
+
+        done++;
+      } catch (e) {
+        console.error('migrate', d.id, e);
+        failed++;
+      }
+      bar.style.width = Math.round(((done + failed) / pending.length) * 100) + '%';
+    }
+
+    txt.textContent = failed
+      ? `Migrated ${done}, ${failed} failed — see the console and re-run.`
+      : `Migrated ${done} material${done !== 1 ? 's' : ''}.`;
+    toast(failed ? `${failed} failed` : 'Migration complete', failed ? 'err' : 'ok');
+    await checkMigration();
+    await loadMaterialsList();
+  } catch (e) {
+    txt.textContent = 'Migration failed: ' + e.message;
+    toast('Migration failed', 'err');
+    migrateBtn.disabled = false;
+  }
+});
+
+/* ── boot ─────────────────────────────────────────────── */
+loadStudents();
+</script>
+</body>
+</html>

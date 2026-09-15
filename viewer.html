@@ -1,0 +1,152 @@
+<!DOCTYPE html>
+<html lang="en" class="booting">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Viewer — StudyVault</title>
+<meta name="robots" content="noindex">
+
+<meta name="theme-color" content="#6d5ef9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/app.css">
+
+<style>
+  html,body{height:100%;overflow:hidden;}
+  .viewer{position:fixed;inset:0;display:flex;flex-direction:column;background:#000;}
+  .viewer-bar{
+    background:var(--card);border-bottom:1px solid var(--border);
+    padding:8px 12px;display:flex;align-items:center;gap:10px;
+    flex-shrink:0;min-height:52px;
+    padding-top:calc(8px + env(safe-area-inset-top,0px));
+  }
+  .viewer-title{
+    font-size:.875rem;font-weight:500;color:var(--ink);flex:1;
+    white-space:nowrap;overflow:hidden;text-overflow:ellipsis;
+  }
+  .frame-wrap{flex:1;position:relative;overflow:hidden;}
+  #frame{
+    position:absolute;inset:0;width:100%;height:100%;
+    border:none;display:block;background:#fff;
+  }
+  .viewer-msg{
+    position:absolute;inset:0;display:flex;flex-direction:column;
+    align-items:center;justify-content:center;gap:14px;
+    background:var(--bg);padding:32px;text-align:center;
+  }
+  .viewer-msg .empty-ico{font-size:2.6rem;}
+  .viewer-msg h2{font-family:'DM Sans',sans-serif;font-size:1.05rem;font-weight:500;color:var(--ink);}
+  .viewer-msg p{font-size:.85rem;color:var(--muted);max-width:44ch;line-height:1.65;}
+</style>
+</head>
+<body>
+
+<div id="boot"><div class="spinner"></div><span class="boot-text">Opening…</span></div>
+
+<div class="viewer">
+  <div class="viewer-bar">
+    <button class="btn btn-secondary btn-sm" id="btn-back">← Back</button>
+    <span class="viewer-title" id="title">Loading…</span>
+    <span class="badge badge-green" id="secure-badge">🔐 Secure</span>
+  </div>
+  <div class="frame-wrap">
+    <iframe id="frame" title="Study material"
+            sandbox="allow-scripts allow-same-origin allow-popups"
+            referrerpolicy="no-referrer"></iframe>
+    <div class="viewer-msg" id="msg" hidden></div>
+  </div>
+</div>
+
+<script type="module">
+import { requireAuth, doSignOut } from './assets/js/session.js';
+import { readContent, buildViewerDoc, fetchRemoteDoc } from './assets/js/content.js';
+import { db, doc, getDoc } from './assets/js/firebase.js';
+import { ready, esc, el, fill, toast } from './assets/js/ui.js';
+
+const params = new URLSearchParams(location.search);
+const matId  = params.get('id');
+
+const frame    = document.getElementById('frame');
+const titleEl  = document.getElementById('title');
+const msgEl    = document.getElementById('msg');
+
+document.getElementById('btn-back').addEventListener('click', () => {
+  if (history.length > 1) history.back();
+  else location.href = 'library.html';
+});
+
+function showMessage(icon, heading, detail) {
+  frame.hidden = true;
+  msgEl.hidden = false;
+  fill(msgEl,
+    el('span', { class: 'empty-ico' }, icon),
+    el('h2', {}, heading),
+    detail ? el('p', {}, detail) : null,
+    el('a', { class: 'btn btn-secondary btn-sm', href: 'library.html' }, 'Back to my materials')
+  );
+}
+
+/** Light deterrents inside the frame. Real protection is the Firestore rules. */
+function harden() {
+  try {
+    const cd = frame.contentDocument;
+    if (!cd || !cd.body) return;
+    cd.addEventListener('contextmenu', e => e.preventDefault());
+    cd.addEventListener('keydown', blockKeys);
+    cd.body.style.userSelect = 'none';
+    cd.body.style.webkitUserSelect = 'none';
+    frame.contentWindow?.focus();
+  } catch (_) { /* cross-origin frame — nothing to harden */ }
+}
+
+function blockKeys(e) {
+  const k = (e.key || '').toLowerCase();
+  if (e.ctrlKey && ['s', 'p', 'u'].includes(k)) e.preventDefault();
+  if (e.key === 'F12' || e.key === 'PrintScreen') e.preventDefault();
+}
+document.addEventListener('contextmenu', e => e.preventDefault());
+document.addEventListener('keydown', blockKeys);
+
+await requireAuth();  // redirects if signed out
+ready();
+
+if (!matId) {
+  titleEl.textContent = 'Nothing to show';
+  showMessage('🤔', 'No material selected', 'Open a material from your library.');
+} else {
+  try {
+    // Title comes from the (readable) metadata doc.
+    const metaSnap = await getDoc(doc(db, 'materials', matId));
+    const title = metaSnap.exists() ? (metaSnap.data().title || 'Untitled') : 'Material';
+    titleEl.textContent = title;
+    document.title = title + ' — StudyVault';
+
+    frame.srcdoc = `<div style="font-family:sans-serif;display:flex;align-items:center;
+      justify-content:center;height:100vh;color:#8587a0;background:#f6f7fb;">Loading content…</div>`;
+
+    const data = await readContent(matId);
+    let srcdoc = buildViewerDoc(data);
+
+    // A remote HTML/JSX URL needs an async fetch from the host page.
+    if (srcdoc === null && data.url) {
+      frame.srcdoc = `<div style="font-family:sans-serif;display:flex;align-items:center;
+        justify-content:center;height:100vh;color:#8587a0;background:#f6f7fb;">Fetching content…</div>`;
+      srcdoc = await fetchRemoteDoc(data.url);
+    }
+
+    frame.onload = harden;
+    frame.srcdoc = srcdoc;
+  } catch (e) {
+    console.error('viewer:', e);
+    titleEl.textContent = 'Could not open';
+    showMessage('⚠️', 'Could not open this material', e.message || 'Please try again.');
+  }
+}
+</script>
+</body>
+</html>

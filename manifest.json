@@ -4,8 +4,8 @@
   "description": "Access your study materials securely",
   "start_url": "/",
   "display": "standalone",
-  "orientation": "portrait",
-  "background_color": "#f4f3ef",
+  "orientation": "any",
+  "background_color": "#f6f7fb",
   "theme_color": "#6d5ef9",
   "icons": [
     {

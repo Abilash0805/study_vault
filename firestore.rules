@@ -1,0 +1,96 @@
+rules_version = '2';
+
+// ═══════════════════════════════════════════════════════════════
+//  StudyVault — Firestore security rules
+//
+//  Deploy:  Firebase Console → Firestore Database → Rules → paste
+//           → Publish.  (Or `firebase deploy --only firestore:rules`)
+//
+//  If you change ADMIN_EMAIL in assets/js/config.js you MUST change
+//  it here too — the client constant grants nothing on its own.
+//
+//  WHY CONTENT IS SPLIT ACROSS TWO COLLECTIONS
+//  Firestore rules cannot filter a collection query: a rule that
+//  depends on per-document data makes the whole query fail rather
+//  than returning the allowed subset. So the browsable catalogue
+//  and the paid bytes have to live apart:
+//
+//    materials/{id}        metadata only — any signed-in user may
+//                          read it, so the library and (later) the
+//                          store can list what exists.
+//    materialContent/{id}  the actual bytes — readable only by
+//                          someone who has that id in their files[].
+//                          Fetched one document at a time.
+// ═══════════════════════════════════════════════════════════════
+
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function adminEmail() {
+      return "abi.abilashv0805@gmail.com";
+    }
+
+    function signedIn() {
+      return request.auth != null && request.auth.token.email != null;
+    }
+
+    // Student docs are keyed by lowercased email; tokens may not be.
+    function callerEmail() {
+      return request.auth.token.email.lower();
+    }
+
+    function isAdmin() {
+      return signedIn() && callerEmail() == adminEmail();
+    }
+
+    function studentDoc() {
+      return get(/databases/$(database)/documents/students/$(callerEmail()));
+    }
+
+    // True when the caller has been granted this material id.
+    // `.get('files', [])` keeps a student doc with no files[] from erroring.
+    function hasAccess(materialId) {
+      return signedIn()
+        && exists(/databases/$(database)/documents/students/$(callerEmail()))
+        && materialId in studentDoc().data.get('files', []);
+    }
+
+    // ── STUDENTS ────────────────────────────────────────────
+    // Admin manages everyone. A student may read only their own doc
+    // (to discover what they've been granted) and may never write it,
+    // so nobody can grant themselves access.
+    match /students/{email} {
+      allow read, write: if isAdmin();
+      allow read: if signedIn() && callerEmail() == email;
+    }
+
+    // ── MATERIAL METADATA ───────────────────────────────────
+    // Title, tag, folder, price. Safe to list: it carries no content.
+    // Keep it that way — never write content fields back into here.
+    match /materials/{id} {
+      allow read:  if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // ── MATERIAL CONTENT ────────────────────────────────────
+    // The part worth paying for. Per-document reads only; a student
+    // listing the whole collection is denied, by design.
+    match /materialContent/{id} {
+      allow read:  if isAdmin() || hasAccess(id);
+      allow write: if isAdmin();
+    }
+
+    // ── FOLDERS ─────────────────────────────────────────────
+    // Names only, so students can see the tree they've been given.
+    match /folders/{id} {
+      allow read:  if signedIn();
+      allow write: if isAdmin();
+    }
+
+    // Anything not matched above is denied. New collections must be
+    // added deliberately rather than inheriting access by accident.
+    match /{document=**} {
+      allow read, write: if false;
+    }
+  }
+}
