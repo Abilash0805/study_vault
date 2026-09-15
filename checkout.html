@@ -81,7 +81,7 @@
 import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
 import { listMaterials } from './assets/js/content.js';
 import { db, doc, getDoc } from './assets/js/firebase.js';
-import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount } from './assets/js/ui.js';
+import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount, friendlyError } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
 import {
   STATUS, createOrder, markAsPaid, cancelOrder, buildUpiUri,
@@ -353,7 +353,7 @@ try {
   }
 } catch (e) {
   console.error('checkout:', e);
-  fill(contentEl, emptyState('⚠️', 'Could not load checkout', e.message));
+  fill(contentEl, emptyState('⚠️', 'Could not load checkout', friendlyError(e, { isAdmin })));
 } finally {
   ready();
 }

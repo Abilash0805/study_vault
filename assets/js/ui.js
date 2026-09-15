@@ -191,3 +191,33 @@ export function toggleDrawer(open) {
 export function ready() {
   document.documentElement.classList.remove('booting');
 }
+
+/**
+ * Turn a Firebase error into something a student can act on.
+ *
+ * Raw SDK strings ("Missing or insufficient permissions.") are
+ * meaningless to the person reading them and alarming on a page
+ * they've done nothing wrong on. The admin gets the real cause,
+ * since for them it almost always means the rules need publishing.
+ */
+export function friendlyError(e, { isAdmin = false } = {}) {
+  const code = e?.code || '';
+  const msg  = e?.message || '';
+
+  if (code === 'permission-denied' || /insufficient permissions/i.test(msg)) {
+    return isAdmin
+      ? 'Firestore refused this. Your security rules are probably out of date — ' +
+        'publish the current firestore.rules from the repo.'
+      : 'You don\'t have access to this yet. If that looks wrong, contact your instructor.';
+  }
+  if (code === 'unauthenticated') {
+    return 'Your session expired. Please sign in again.';
+  }
+  if (code === 'unavailable' || code === 'deadline-exceeded' || /network/i.test(msg)) {
+    return 'Couldn\'t reach the server. Check your connection and try again.';
+  }
+  if (code === 'resource-exhausted') {
+    return 'The service is busy right now. Please try again in a minute.';
+  }
+  return msg || 'Something went wrong. Please try again.';
+}

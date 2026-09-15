@@ -87,7 +87,7 @@
 
 <script type="module">
 import { requireAuth, doSignOut } from './assets/js/session.js';
-import { mountChrome, ready, el, fill, fmtDate, emptyState, toast, setCartCount } from './assets/js/ui.js';
+import { mountChrome, ready, el, fill, fmtDate, emptyState, toast, setCartCount, friendlyError } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
 import {
   REQ_STATUS, REQ_META, MAX_OPEN_PER_STUDENT,
@@ -161,7 +161,7 @@ async function refresh() {
       : 'Only your instructor sees this. You\'ll see the status update here.';
   } catch (e) {
     console.error('requests:', e);
-    fill(listEl, emptyState('⚠️', 'Could not load your requests', e.message));
+    fill(listEl, emptyState('⚠️', 'Could not load your requests', friendlyError(e, { isAdmin })));
   }
 }
 
@@ -184,7 +184,7 @@ document.getElementById('btn-submit').addEventListener('click', async (e) => {
     toast('Request sent — thanks!', 'ok');
     refresh();
   } catch (err) {
-    toast(err.message || 'Could not send the request', 'err');
+    toast(friendlyError(err, { isAdmin }), 'err');
   } finally {
     btn.disabled = false;
     btn.textContent = 'Send request';

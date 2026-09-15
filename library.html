@@ -39,7 +39,7 @@
 <script type="module">
 import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
 import { listMaterials, listFolders, kindIcon } from './assets/js/content.js';
-import { mountChrome, ready, el, fill, esc, fmtDate, emptyState, toast, setCartCount } from './assets/js/ui.js';
+import { mountChrome, ready, el, fill, esc, fmtDate, emptyState, toast, setCartCount, friendlyError } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
 
 const { user, isAdmin, student } = await requireAuth();
@@ -189,7 +189,7 @@ try {
   render();
 } catch (e) {
   console.error('library load:', e);
-  fill(contentEl, emptyState('⚠️', 'Could not load your library', e.message || 'Please refresh and try again.'));
+  fill(contentEl, emptyState('⚠️', 'Could not load your library', friendlyError(e, { isAdmin })));
   toast('Failed to load library', 'err');
 } finally {
   ready();

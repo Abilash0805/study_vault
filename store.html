@@ -50,7 +50,7 @@
 <script type="module">
 import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
 import { listMaterials, kindIcon } from './assets/js/content.js';
-import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount } from './assets/js/ui.js';
+import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount, friendlyError } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
 
 const { user, isAdmin, student } = await requireAuth();
@@ -159,7 +159,7 @@ try {
   }
 } catch (e) {
   console.error('store:', e);
-  fill(contentEl, emptyState('⚠️', 'Could not load the store', e.message));
+  fill(contentEl, emptyState('⚠️', 'Could not load the store', friendlyError(e, { isAdmin })));
   toast('Failed to load store', 'err');
 } finally {
   ready();
