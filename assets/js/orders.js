@@ -56,12 +56,12 @@ function randomCode(n) {
   return [...bytes].map(b => ALPHABET[b % ALPHABET.length]).join('');
 }
 
-/** Human-readable order number, e.g. SV-260915-K7Q2. */
+/** Human-readable order number, e.g. PD-260915-K7Q2. */
 export function newOrderNo(now = new Date()) {
   const y = String(now.getFullYear()).slice(2);
   const m = String(now.getMonth() + 1).padStart(2, '0');
   const d = String(now.getDate()).padStart(2, '0');
-  return `SV-${y}${m}${d}-${randomCode(4)}`;
+  return `PD-${y}${m}${d}-${randomCode(4)}`;
 }
 
 /**
@@ -92,7 +92,7 @@ export function buildUpiUri({ vpa, payeeName, amountPaise, txnRef, note }) {
   q.set('am', paiseToAmount(amountPaise));
   q.set('cu', 'INR');
   if (txnRef) q.set('tr', txnRef);
-  q.set('tn', (note || 'StudyVault').replace(/[^A-Za-z0-9 .-]/g, '').slice(0, 40));
+  q.set('tn', (note || 'PrepDeck').replace(/[^A-Za-z0-9 .-]/g, '').slice(0, 40));
   // URLSearchParams uses '+' for spaces; UPI apps want %20.
   return 'upi://pay?' + q.toString().replace(/\+/g, '%20');
 }

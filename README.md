@@ -1,4 +1,4 @@
-# StudyVault
+# PrepDeck
 
 A private library where students sign in with Google and read only the study
 materials assigned to them. Static files + Firebase (Auth + Firestore) — no
@@ -87,7 +87,7 @@ There is no payment gateway. UPI cannot call back into a static site, so
 you approve it in Admin → Payments, which grants access and writes a ledger
 entry.
 
-The QR puts the order number in the payment note (`StudyVault SV-260915-K7Q2`),
+The QR puts the order number in the payment note (`PrepDeck PD-260915-K7Q2`),
 so payments normally arrive already identifying themselves and the student has
 nothing to type. They *can* add their UPI reference, which makes matching exact
 and enables the duplicate-payment check, but it is optional.

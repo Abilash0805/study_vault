@@ -162,7 +162,7 @@ export function mountChrome({ active, user, isAdmin, onSignOut }) {
       }, '☰'),
       el('a', { class: 'brand', href: 'library.html' },
         el('img', { src: 'icon-192.png', alt: '' }),
-        'Study', el('span', {}, 'Vault')
+        'Prep', el('span', {}, 'Deck')
       ),
       el('nav', { class: 'nav' }, ...navButtons(active, isAdmin)),
       el('div', { class: 'header-right' },

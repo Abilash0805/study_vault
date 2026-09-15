@@ -1,9 +1,9 @@
 // ═══════════════════════════════════════════════════════════
-//  StudyVault service worker
+//  PrepDeck service worker
 //  Network-first with a cache fallback, so a deploy is picked up
 //  immediately but the app still opens on a flaky connection.
 // ═══════════════════════════════════════════════════════════
-const CACHE = 'studyvault-v7';
+const CACHE = 'prepdeck-v8';
 
 const SHELL = [
   './',
@@ -98,7 +98,7 @@ function offlinePage() {
   return new Response(
     `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>StudyVault — Offline</title>
+<title>PrepDeck — Offline</title>
 <style>
  body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;
  justify-content:center;min-height:100vh;margin:0;background:#f6f7fb;color:#161726;
@@ -111,7 +111,7 @@ function offlinePage() {
 </style></head><body>
  <div class="icon">📶</div>
  <h1>You're offline</h1>
- <p>StudyVault needs a connection to load your materials. Check your network and try again.</p>
+ <p>PrepDeck needs a connection to load your materials. Check your network and try again.</p>
  <button onclick="location.reload()">Try again</button>
 </body></html>`,
     { headers: { 'Content-Type': 'text/html; charset=utf-8' } }

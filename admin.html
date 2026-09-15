@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Admin — StudyVault</title>
+<title>Admin — PrepDeck</title>
 <meta name="robots" content="noindex">
 
 <meta name="theme-color" content="#6d5ef9">
@@ -932,7 +932,7 @@ function renderPending() {
         el('span', { style: 'font-weight:500;text-align:right' },
           fmtMoney(o.totalPaise),
           el('br', {}),
-          el('span', { class: 'mono small' }, 'note: StudyVault ' + o.orderNo))),
+          el('span', { class: 'mono small' }, 'note: PrepDeck ' + o.orderNo))),
       el('div', { class: 'summary-row' },
         el('span', { class: 'muted' }, 'UPI reference'),
         o.utr
@@ -973,7 +973,7 @@ async function approve(order, btn) {
     `Order ${order.orderNo}\n` +
     (order.utr
       ? `UPI reference: ${order.utr}\n`
-      : `No reference given — look for "StudyVault ${order.orderNo}" in the payment note.\n`) +
+      : `No reference given — look for "PrepDeck ${order.orderNo}" in the payment note.\n`) +
     `\nOnly do this after checking the payment actually arrived.${warning}`
   )) return;
 
@@ -1336,11 +1336,78 @@ document.getElementById('btn-health').addEventListener('click', async (e) => {
     }
   }
 
+  // Denials are almost always unpublished rules, so put the fix right
+  // here: the exact text to paste and a link straight to the right page.
+  if (failed.length) frag.append(await fixPanel());
+
   fill(out, frag);
   btn.disabled = false; btn.textContent = 'Run health check';
   toast(failed.length ? `${failed.length} check(s) failed` : 'All checks passed',
         failed.length ? 'err' : 'ok');
 });
+
+/**
+ * Everything needed to fix a denial, in one place: the live rules
+ * file, a one-click copy, and a deep link to this project's rules
+ * page. Fetched from the deployed firestore.rules so it can never
+ * drift from what the app actually expects.
+ */
+async function fixPanel() {
+  const consoleUrl =
+    `https://console.firebase.google.com/project/${FIREBASE_CONFIG.projectId}/firestore/rules`;
+
+  const box = el('div', { class: 'card', style: 'margin-top:16px;background:var(--sunken)' },
+    el('h2', {}, '🛠 Fix: publish the current rules'),
+    el('p', { class: 'card-sub' },
+      'Copy the rules below, paste them over everything in the Firebase console, and hit Publish. ' +
+      'Then run this check again.')
+  );
+
+  let text = null;
+  try {
+    const res = await fetch('firestore.rules', { cache: 'no-store' });
+    if (res.ok) text = await res.text();
+  } catch (_) { /* fall through to the link-only version */ }
+
+  const actions = el('div', { class: 'list-actions', style: 'margin-bottom:12px' },
+    el('a', {
+      class: 'btn btn-primary btn-sm', href: consoleUrl,
+      target: '_blank', rel: 'noopener'
+    }, 'Open Firestore rules →')
+  );
+
+  if (text) {
+    const pre = el('pre', {
+      style: 'max-height:260px;overflow:auto;background:var(--card);border:1px solid var(--border);' +
+             'border-radius:var(--radius-xs);padding:12px;font-size:.72rem;line-height:1.5;' +
+             'white-space:pre;font-family:ui-monospace,Menlo,Consolas,monospace;'
+    }, text);
+
+    actions.prepend(el('button', {
+      class: 'btn btn-secondary btn-sm',
+      onclick: async (e) => {
+        try {
+          await navigator.clipboard.writeText(text);
+          toast('Rules copied — paste them in the console', 'ok');
+        } catch (_) {
+          // clipboard can be blocked; select it so Ctrl+C still works
+          const r = document.createRange();
+          r.selectNodeContents(pre);
+          const sel = getSelection();
+          sel.removeAllRanges(); sel.addRange(r);
+          toast('Selected — press Ctrl/Cmd+C to copy', '');
+        }
+      }
+    }, '📋 Copy rules'));
+
+    box.append(actions, pre);
+  } else {
+    box.append(actions, el('p', { class: 'hint' },
+      'Could not load firestore.rules from the site — copy it from the repo instead.'));
+  }
+
+  return box;
+}
 
 /* ── MIGRATION ────────────────────────────────────────── */
 const migrateBtn = document.getElementById('btn-migrate');
