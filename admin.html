@@ -301,6 +301,21 @@
   <!-- ══ MAINTENANCE ══ -->
   <section class="panel" id="panel-maintenance">
     <div class="card">
+      <h2>🩺 Rules health check</h2>
+      <p class="card-sub">
+        Probes every collection and reports what Firestore actually allows right now.
+        Use this when something says "you don't have access" — it tells you whether
+        the rules are published, and which ones are missing.
+      </p>
+      <p class="hint" style="margin-top:0">
+        Talking to project <strong class="mono" id="proj-id">—</strong>.
+        If that isn't the project whose rules you published, that's the problem.
+      </p>
+      <button class="btn btn-primary" id="btn-health">Run health check</button>
+      <div id="health-out" style="margin-top:14px;"></div>
+    </div>
+
+    <div class="card">
       <h2>🔐 Content security migration</h2>
       <div id="migrate-status"><p class="muted small">Checking…</p></div>
       <p class="hint">
@@ -340,8 +355,9 @@
 import { requireAuth, doSignOut } from './assets/js/session.js';
 import {
   db, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc,
-  collection, getDocs, arrayRemove, deleteField
+  collection, getDocs, query, where, arrayRemove, deleteField
 } from './assets/js/firebase.js';
+import { FIREBASE_CONFIG } from './assets/js/config.js';
 import { listFolders, listMaterials, inferKind, CONTENT_FIELDS, hasInlineContent } from './assets/js/content.js';
 import {
   STATUS, STATUS_META, listAllOrders, listLedger, ledgerTotal, auditOrder,
@@ -1235,6 +1251,96 @@ async function fulfil(r) {
     loadRequests();
   } catch (e) { toast('Error: ' + e.message, 'err'); }
 }
+
+/* ── RULES HEALTH CHECK ───────────────────────────────── */
+document.getElementById('proj-id').textContent = FIREBASE_CONFIG.projectId;
+
+/**
+ * Each probe is a read the app actually performs. A denial means
+ * that collection's rules are missing or stale.
+ *
+ * The "own rows" probes matter most: they use the same filtered
+ * query a student makes, which is the only way to tell a missing
+ * match block apart from a rule that exists but rejects the query.
+ */
+const PROBES = [
+  { key: 'materials',       label: 'materials (catalogue)',
+    run: () => getDocs(collection(db, 'materials')) },
+  { key: 'materialContent', label: 'materialContent (the paid bytes)',
+    run: () => getDocs(collection(db, 'materialContent')) },
+  { key: 'folders',         label: 'folders',
+    run: () => getDocs(collection(db, 'folders')) },
+  { key: 'students',        label: 'students',
+    run: () => getDocs(collection(db, 'students')) },
+  { key: 'settings',        label: 'settings/payment (UPI id)',
+    run: () => getDoc(doc(db, 'settings', 'payment')) },
+  { key: 'orders',          label: 'orders (all)',
+    run: () => getDocs(collection(db, 'orders')) },
+  { key: 'ordersMine',      label: 'orders filtered by email — the student\'s query',
+    run: () => getDocs(query(collection(db, 'orders'), where('email', '==', user.email.toLowerCase()))) },
+  { key: 'ledger',          label: 'ledger',
+    run: () => getDocs(collection(db, 'ledger')) },
+  { key: 'requests',        label: 'requests (all)',
+    run: () => getDocs(collection(db, 'requests')) },
+  { key: 'requestsMine',    label: 'requests filtered by email — the student\'s query',
+    run: () => getDocs(query(collection(db, 'requests'), where('email', '==', user.email.toLowerCase()))) }
+];
+
+document.getElementById('btn-health').addEventListener('click', async (e) => {
+  const btn = e.target;
+  const out = document.getElementById('health-out');
+  btn.disabled = true; btn.textContent = 'Checking…';
+  fill(out, el('p', { class: 'muted small' }, 'Running…'));
+
+  const results = [];
+  for (const p of PROBES) {
+    try {
+      await p.run();
+      results.push({ ...p, ok: true });
+    } catch (err) {
+      results.push({ ...p, ok: false, code: err?.code || '', msg: err?.message || String(err) });
+    }
+  }
+
+  const failed = results.filter(r => !r.ok);
+  const frag = document.createDocumentFragment();
+
+  frag.append(el('div', {
+    class: 'callout ' + (failed.length ? 'callout-warn' : 'callout-ok')
+  }, failed.length
+      ? el('span', {}, el('strong', {}, `${failed.length} of ${results.length} checks failed. `),
+          'The collections below are denied — their rules are missing or out of date. ' +
+          'Publish firestore.rules from the repo, to project ' + FIREBASE_CONFIG.projectId + '.')
+      : el('span', {}, el('strong', {}, '✓ All checks passed. '),
+          'Every collection is readable, including the filtered queries students use.')));
+
+  results.forEach(r => frag.append(el('div', { class: 'list-item' },
+    el('div', { class: 'list-body' },
+      el('div', { class: 'list-title' },
+        el('span', { class: 'badge ' + (r.ok ? 'badge-green' : 'badge-red') },
+          r.ok ? '✓ allowed' : '✗ denied'),
+        r.label),
+      r.ok ? null : el('div', { class: 'list-sub mono' }, r.code || r.msg)
+    ))));
+
+  // A block that exists but rejects the filtered query is a different
+  // problem from one that is missing entirely — say so explicitly.
+  const pairs = [['requests', 'requestsMine'], ['orders', 'ordersMine']];
+  for (const [allKey, mineKey] of pairs) {
+    const all = results.find(r => r.key === allKey);
+    const mine = results.find(r => r.key === mineKey);
+    if (all?.ok && mine && !mine.ok) {
+      frag.append(el('div', { class: 'flag flag-danger' },
+        `⛔ ${allKey}: the rules exist, but the filtered query students use is rejected. ` +
+        `That is a rule-design problem, not a publishing one — send me this and I'll fix it.`));
+    }
+  }
+
+  fill(out, frag);
+  btn.disabled = false; btn.textContent = 'Run health check';
+  toast(failed.length ? `${failed.length} check(s) failed` : 'All checks passed',
+        failed.length ? 'err' : 'ok');
+});
 
 /* ── MIGRATION ────────────────────────────────────────── */
 const migrateBtn = document.getElementById('btn-migrate');
