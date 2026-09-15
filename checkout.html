@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Checkout — PrepDeck</title>
+<title>Checkout — Chapter Kit</title>
 <meta name="robots" content="noindex">
 
 <link rel="manifest" href="manifest.json">
@@ -184,7 +184,7 @@ function renderPay(order) {
     payeeName: settings.payeeName,
     amountPaise: order.totalPaise,
     txnRef: order.txnRef,
-    note: 'PrepDeck ' + order.orderNo
+    note: 'Chapter Kit ' + order.orderNo
   });
 
   const qrHolder = el('div', { class: 'qr-holder' },

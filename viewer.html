@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Viewer — PrepDeck</title>
+<title>Viewer — Chapter Kit</title>
 <meta name="robots" content="noindex">
 
 <meta name="theme-color" content="#6d5ef9">
@@ -124,7 +124,7 @@ if (!matId) {
     const metaSnap = await getDoc(doc(db, 'materials', matId));
     const title = metaSnap.exists() ? (metaSnap.data().title || 'Untitled') : 'Material';
     titleEl.textContent = title;
-    document.title = title + ' — PrepDeck';
+    document.title = title + ' — Chapter Kit';
 
     frame.srcdoc = `<div style="font-family:sans-serif;display:flex;align-items:center;
       justify-content:center;height:100vh;color:#8587a0;background:#f6f7fb;">Loading content…</div>`;

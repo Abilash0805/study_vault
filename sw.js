@@ -1,9 +1,9 @@
 // ═══════════════════════════════════════════════════════════
-//  PrepDeck service worker
+//  Chapter Kit service worker
 //  Network-first with a cache fallback, so a deploy is picked up
 //  immediately but the app still opens on a flaky connection.
 // ═══════════════════════════════════════════════════════════
-const CACHE = 'prepdeck-v8';
+const CACHE = 'chapterkit-v9';
 
 const SHELL = [
   './',
@@ -98,7 +98,7 @@ function offlinePage() {
   return new Response(
     `<!DOCTYPE html><html lang="en"><head><meta charset="UTF-8">
 <meta name="viewport" content="width=device-width,initial-scale=1">
-<title>PrepDeck — Offline</title>
+<title>Chapter Kit — Offline</title>
 <style>
  body{font-family:system-ui,sans-serif;display:flex;flex-direction:column;align-items:center;
  justify-content:center;min-height:100vh;margin:0;background:#f6f7fb;color:#161726;
@@ -111,7 +111,7 @@ function offlinePage() {
 </style></head><body>
  <div class="icon">📶</div>
  <h1>You're offline</h1>
- <p>PrepDeck needs a connection to load your materials. Check your network and try again.</p>
+ <p>Chapter Kit needs a connection to load your materials. Check your network and try again.</p>
  <button onclick="location.reload()">Try again</button>
 </body></html>`,
     { headers: { 'Content-Type': 'text/html; charset=utf-8' } }

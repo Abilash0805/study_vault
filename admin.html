@@ -3,7 +3,7 @@
 <head>
 <meta charset="UTF-8">
 <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
-<title>Admin — PrepDeck</title>
+<title>Admin — Chapter Kit</title>
 <meta name="robots" content="noindex">
 
 <meta name="theme-color" content="#6d5ef9">
@@ -932,7 +932,7 @@ function renderPending() {
         el('span', { style: 'font-weight:500;text-align:right' },
           fmtMoney(o.totalPaise),
           el('br', {}),
-          el('span', { class: 'mono small' }, 'note: PrepDeck ' + o.orderNo))),
+          el('span', { class: 'mono small' }, 'note: Chapter Kit ' + o.orderNo))),
       el('div', { class: 'summary-row' },
         el('span', { class: 'muted' }, 'UPI reference'),
         o.utr
@@ -973,7 +973,7 @@ async function approve(order, btn) {
     `Order ${order.orderNo}\n` +
     (order.utr
       ? `UPI reference: ${order.utr}\n`
-      : `No reference given — look for "PrepDeck ${order.orderNo}" in the payment note.\n`) +
+      : `No reference given — look for "Chapter Kit ${order.orderNo}" in the payment note.\n`) +
     `\nOnly do this after checking the payment actually arrived.${warning}`
   )) return;
 

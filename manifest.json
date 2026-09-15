@@ -1,6 +1,6 @@
 {
-  "name": "PrepDeck — Secure Learning Portal",
-  "short_name": "PrepDeck",
+  "name": "Chapter Kit — Secure Learning Portal",
+  "short_name": "Chapter Kit",
   "description": "Access your study materials securely",
   "start_url": "/",
   "display": "standalone",

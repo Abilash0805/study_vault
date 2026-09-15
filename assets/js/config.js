@@ -1,5 +1,5 @@
 // ═══════════════════════════════════════════════════════════
-//  PrepDeck — configuration
+//  Chapter Kit — configuration
 //  The only file you normally need to edit.
 // ═══════════════════════════════════════════════════════════
 
@@ -17,4 +17,4 @@ export const FIREBASE_CONFIG = {
 // enforced server-side. Update both, then redeploy the rules.
 export const ADMIN_EMAIL = "abi.abilashv0805@gmail.com";
 
-export const SITE_NAME = "PrepDeck";
+export const SITE_NAME = "Chapter Kit";
