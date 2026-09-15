@@ -197,6 +197,29 @@ A small guard script is injected into every material to handle the rest:
 Ids are visible in the admin materials list. Nothing else resolves — a material
 is a single uploaded file, so relative paths to other files have nowhere to go.
 
+## SEO
+
+Only the landing page is public; every other page needs a signed-in account, so
+a crawler reaching one sees a loading spinner. Those pages carry
+`<meta name="robots" content="noindex">` and are listed in `robots.txt`, and
+they are deliberately kept out of `sitemap.xml` — submitting a page Google can
+never render adds a thin result, not traffic.
+
+`robots.txt` does **not** block `assets/`. Google renders a page before ranking
+it, so blocking CSS and JS makes the site look broken to it.
+
+Link previews (`og:` and `twitter:` tags) are static and absolute because
+scrapers do not execute JavaScript, and a relative `og:image` is resolved
+inconsistently. `og-image.png` is a 1200x630 card.
+
+**If the site moves to a custom domain, update the URL in four places:**
+`robots.txt` (Sitemap line), `sitemap.xml` (`<loc>`), and in `index.html` the
+`canonical` link plus the `og:`/`twitter:`/JSON-LD URLs.
+
+The store is currently `noindex` because it requires sign-in. If you ever make
+the catalogue publicly browsable, that is the one page worth indexing — remove
+its `noindex`, drop it from `robots.txt`, and add it to `sitemap.xml`.
+
 ## A note on "no download"
 
 The viewer disables right-click and the usual save shortcuts, and PDFs are

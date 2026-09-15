@@ -3,7 +3,7 @@
 //  Network-first with a cache fallback, so a deploy is picked up
 //  immediately but the app still opens on a flaky connection.
 // ═══════════════════════════════════════════════════════════
-const CACHE = 'chapterkit-v9';
+const CACHE = 'chapterkit-v10';
 
 const SHELL = [
   './',
@@ -18,6 +18,7 @@ const SHELL = [
   'admin.html',
   'manifest.json',
   'icon-192.png',
+  'og-image.png',
   'assets/css/app.css',
   'assets/js/config.js',
   'assets/js/firebase.js',

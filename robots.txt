@@ -1,0 +1,21 @@
+# Chapter Kit
+
+# Everything below the landing page needs a signed-in account. A crawler
+# reaching them sees only a loading spinner, so indexing them would add
+# thin, duplicate pages rather than traffic. They are excluded here and
+# also carry <meta name="robots" content="noindex">.
+User-agent: *
+Disallow: /admin.html
+Disallow: /library.html
+Disallow: /viewer.html
+Disallow: /store.html
+Disallow: /cart.html
+Disallow: /checkout.html
+Disallow: /orders.html
+Disallow: /request.html
+Disallow: /firestore.rules
+
+# CSS and JS are deliberately NOT blocked. Google renders pages before
+# ranking them, and blocking assets makes the page look broken to it.
+
+Sitemap: https://prepdeck1.vercel.app/sitemap.xml
