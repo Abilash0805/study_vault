@@ -870,11 +870,16 @@ function renderPending() {
       ),
       ...orderLines(o),
       el('div', { class: 'summary-row', style: 'border-top:1px solid var(--border);margin-top:6px;padding-top:9px' },
-        el('span', { class: 'muted' }, 'UPI reference'),
-        el('span', { class: 'mono', style: 'font-weight:500' }, o.utr || '—')),
+        el('span', { class: 'muted' }, 'Look for in your UPI app'),
+        el('span', { style: 'font-weight:500;text-align:right' },
+          fmtMoney(o.totalPaise),
+          el('br', {}),
+          el('span', { class: 'mono small' }, 'note: StudyVault ' + o.orderNo))),
       el('div', { class: 'summary-row' },
-        el('span', { class: 'muted' }, 'Expected in your UPI app'),
-        el('span', {}, `${fmtMoney(o.totalPaise)} · ref ${o.txnRef}`)),
+        el('span', { class: 'muted' }, 'UPI reference'),
+        o.utr
+          ? el('span', { class: 'mono', style: 'font-weight:500' }, o.utr)
+          : el('span', { class: 'muted small' }, 'not provided — match on the note above')),
       el('div', { class: 'summary-row' },
         el('span', { class: 'muted' }, 'Submitted'),
         el('span', {}, fmtDateTime(o.submittedAt || o.updatedAt)))
@@ -907,8 +912,11 @@ async function approve(order, btn) {
     : '';
   if (!confirm(
     `Confirm ${fmtMoney(order.totalPaise)} received from ${order.email}?\n\n` +
-    `Order ${order.orderNo}\nUPI reference: ${order.utr || '—'}\n\n` +
-    `Only do this after checking the payment actually arrived.${warning}`
+    `Order ${order.orderNo}\n` +
+    (order.utr
+      ? `UPI reference: ${order.utr}\n`
+      : `No reference given — look for "StudyVault ${order.orderNo}" in the payment note.\n`) +
+    `\nOnly do this after checking the payment actually arrived.${warning}`
   )) return;
 
   if (btn) { btn.disabled = true; btn.textContent = 'Granting…'; }

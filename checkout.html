@@ -84,7 +84,7 @@ import { db, doc, getDoc } from './assets/js/firebase.js';
 import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
 import {
-  STATUS, createOrder, submitUtr, cancelOrder, buildUpiUri,
+  STATUS, createOrder, markAsPaid, cancelOrder, buildUpiUri,
   loadPaymentSettings, isPlausibleUtr, paiseToAmount
 } from './assets/js/orders.js';
 
@@ -177,7 +177,7 @@ function renderReview() {
 function renderPay(order) {
   steps(2);
   document.getElementById('sub').textContent =
-    'Pay the exact amount, then enter your UPI reference number below.';
+    'Pay the exact amount with any UPI app, then tap "I have paid".';
 
   const uri = buildUpiUri({
     vpa: settings.upiVpa,
@@ -209,25 +209,45 @@ function renderPay(order) {
 
   const utrInput = el('input', {
     class: 'input', type: 'text', inputmode: 'numeric',
-    placeholder: 'e.g. 412345678901', maxlength: '24'
+    placeholder: 'Optional', maxlength: '24'
   });
 
-  const submitBtn = el('button', { class: 'btn btn-primary btn-block' }, 'I have paid — submit reference');
+  // Tucked away behind a toggle: the order number already travels in the
+  // payment note, so almost nobody needs to fill this in.
+  const refBlock = el('div', { hidden: true, style: 'margin-top:10px' },
+    el('label', { class: 'label' }, 'UPI reference / UTR number'),
+    utrInput,
+    el('p', { class: 'hint', style: 'margin-top:6px' },
+      'Your UPI app shows this after paying. It helps match your payment faster, but it is not required.')
+  );
+
+  const refToggle = el('button', {
+    class: 'btn btn-ghost btn-sm', style: 'margin-top:4px',
+    onclick: () => {
+      refBlock.hidden = !refBlock.hidden;
+      refToggle.textContent = refBlock.hidden
+        ? 'Add a payment reference (optional)'
+        : 'Hide reference field';
+      if (!refBlock.hidden) utrInput.focus();
+    }
+  }, 'Add a payment reference (optional)');
+
+  const submitBtn = el('button', { class: 'btn btn-primary btn-block' }, '✓ I have paid');
   submitBtn.addEventListener('click', async () => {
-    const v = utrInput.value;
-    if (!isPlausibleUtr(v)) {
-      toast('Enter the UPI reference / UTR number from your payment app', 'err');
+    const v = utrInput.value.trim();
+    if (v && !isPlausibleUtr(v)) {
+      toast('That reference doesn\'t look right — clear it or fix it', 'err');
       utrInput.focus();
       return;
     }
     submitBtn.disabled = true;
     submitBtn.textContent = 'Submitting…';
     try {
-      await submitUtr(order.id, v);
+      await markAsPaid(order.id, v);
       renderDone(order);
     } catch (e) {
       submitBtn.disabled = false;
-      submitBtn.textContent = 'I have paid — submit reference';
+      submitBtn.textContent = '✓ I have paid';
       toast(e.message || 'Could not submit', 'err');
     }
   });
@@ -262,13 +282,13 @@ function renderPay(order) {
             'add the order number in the payment note so it can be matched.')
         ),
         el('div', { class: 'card' },
-          el('h2', {}, 'Confirm your payment'),
+          el('h2', {}, 'Done paying?'),
           el('p', { class: 'card-sub' },
-            'After paying, your UPI app shows a reference number (also called UTR or transaction ID). ' +
-            'Enter it here so your payment can be matched.'),
-          el('div', { class: 'field' },
-            el('label', { class: 'label' }, 'UPI reference / UTR number'), utrInput),
+            'Tap below once your payment has gone through. Your order number is already ' +
+            'in the payment note, so it can be matched without you entering anything.'),
           submitBtn,
+          refToggle,
+          refBlock,
           el('button', {
             class: 'btn btn-ghost btn-block', style: 'margin-top:8px',
             onclick: async () => {

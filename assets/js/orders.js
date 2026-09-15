@@ -157,14 +157,22 @@ export async function createOrder({ email, ids, byId, ownedIds }) {
   return { id: ref.id, ...order };
 }
 
-/** Student says "I've paid, here's the reference". */
-export async function submitUtr(orderId, utr) {
+/**
+ * Student says "I've paid".
+ *
+ * The reference is optional on purpose: the QR already carries the
+ * order number in the payment note, so most payments arrive
+ * self-identifying and asking a student to find a UTR is friction
+ * for little gain. When they do supply one it is kept, because it
+ * makes reconciliation exact and powers the duplicate-payment check.
+ */
+export async function markAsPaid(orderId, utr) {
   const clean = normaliseUtr(utr);
-  if (!isPlausibleUtr(clean)) {
-    throw new Error('That does not look like a valid UPI reference number.');
+  if (clean && !isPlausibleUtr(clean)) {
+    throw new Error('That does not look like a valid UPI reference number. Leave it blank if you are not sure.');
   }
   await updateDoc(doc(db, 'orders', orderId), {
-    utr: clean,
+    ...(clean ? { utr: clean } : {}),
     status: STATUS.AWAITING,
     submittedAt: Date.now(),
     updatedAt: Date.now()
@@ -229,6 +237,19 @@ export function auditOrder(order, allOrders, materialsById) {
     if (clash) {
       flags.push({ level: 'danger',
         text: `This reference was already submitted on order ${clash.orderNo}.` });
+    }
+  } else {
+    // With no reference, two orders for the same amount are genuinely
+    // hard to tell apart in a UPI app. Match on the order number that
+    // the QR put in the payment note.
+    const sameAmount = allOrders.filter(o =>
+      o.id !== order.id &&
+      o.status === STATUS.AWAITING &&
+      o.totalPaise === order.totalPaise);
+    if (sameAmount.length) {
+      flags.push({ level: 'warn',
+        text: `${sameAmount.length} other order(s) for the same amount are also awaiting confirmation ` +
+              `(${sameAmount.map(o => o.orderNo).join(', ')}). Match on the order number in the payment note.` });
     }
   }
 

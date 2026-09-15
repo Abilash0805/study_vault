@@ -74,8 +74,8 @@ function note(order) {
             'Waiting for payment. Open the order to pay, or cancel it.');
     case STATUS.AWAITING:
       return el('div', { class: 'order-note note-info' },
-        'Your payment reference has been submitted and is being checked. ' +
-        'Access appears here and in My Materials once confirmed.');
+        'Your payment is being checked. Access appears here and in My Materials ' +
+        'once it\'s confirmed — usually within a day.');
     case STATUS.PAID:
       return el('div', { class: 'order-note note-good' },
         '✓ Payment confirmed. These materials are in your library.');

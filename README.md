@@ -82,9 +82,14 @@ privileged read and write is checked server-side.
 ## Payments
 
 There is no payment gateway. UPI cannot call back into a static site, so
-**payments are confirmed by hand**: the student pays, submits the reference
-number their UPI app gave them, and you approve it in Admin → Payments, which
-grants access and writes a ledger entry.
+**payments are confirmed by hand**: the student pays, taps "I have paid", and
+you approve it in Admin → Payments, which grants access and writes a ledger
+entry.
+
+The QR puts the order number in the payment note (`StudyVault SV-260915-K7Q2`),
+so payments normally arrive already identifying themselves and the student has
+nothing to type. They *can* add their UPI reference, which makes matching exact
+and enables the duplicate-payment check, but it is optional.
 
 Set your UPI ID in **Admin → Payments → UPI settings**. It is stored in
 `settings/payment`, not in the code, so you can change it without a redeploy.
@@ -99,7 +104,7 @@ ledger/{id}         { orderId, orderNo, email, type, amountPaise, note, at }
 **Order lifecycle**
 
 ```
-pending_payment ──submit reference──> awaiting_confirmation
+pending_payment ───"I have paid"───> awaiting_confirmation
       │                                      │
       │                              approve │ reject
    cancel/expire                             ▼
@@ -116,6 +121,9 @@ seconds and being guesswork over timestamps.
 things worth a second look:
 
 - the same UPI reference already used on another order (one payment, one order)
+- **other orders awaiting confirmation for the same amount** — without a
+  reference these are hard to tell apart in a UPI app, so match on the order
+  number in the payment note
 - the order total not matching current prices, or not matching its own line items
 - orders older than 24 hours
 
