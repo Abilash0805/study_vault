@@ -220,30 +220,29 @@ The store is currently `noindex` because it requires sign-in. If you ever make
 the catalogue publicly browsable, that is the one page worth indexing — remove
 its `noindex`, drop it from `robots.txt`, and add it to `sitemap.xml`.
 
-## Free samples
+## Free sample
 
-A paid material can carry a free preview so people can see something before
-buying. Samples live in their own collection:
+One free sample **per person**, not per material. A new student's real question
+is "is this teacher any good?" — one sample answers it. A preview on every tile
+asked them to decide fifteen times and gave the instructor fifteen jobs.
 
-```
-materialSample/{id}   { htmlContent | jsxContent | pdfContent }
-materials/{id}.hasSample   true when one exists
-```
+The offer is a single banner at the top of the store:
 
-`materialSample` is readable by **anyone signed in** — that is the whole point
-of a sample — so keep real content out of it. The `hasSample` flag lives on the
-metadata so the store can show the right button without downloading every
-sample just to find out which exist.
+| State | What the student sees |
+|---|---|
+| Never asked | "New here? Try before you buy" + **Ask for a free sample** |
+| Asked | "Your free sample is on its way" — no way to ask again |
+| Sent | "Your free sample is ready" + a link straight to the material |
 
-Upload one from **Admin → Study Materials → ＋ Sample** on any material. The
-store then shows *View a sample*, which opens `viewer.html?id=<id>&sample=1`.
+Asking files a normal request with `kind: 'sample'` and `chapter: 'Free sample'`,
+so it lands in the same **Admin → Requests** queue. Answer it with **🎁 Send a
+sample**: pick any material and it is granted to that student outright, reusing
+the same grant the payment flow uses rather than inventing a second way to hand
+something over. In practice make one "Sample Pack" material and send that.
 
-Without a sample, the store shows *Ask for a sample* instead. That files a
-normal request with `kind: 'sample'` and `sampleOf: <materialId>`, so it lands
-in the same Admin → Requests queue, badged, with a button that jumps straight
-to uploading the sample. The material id is stored as `sampleOf` rather than
-`materialId` because the rules forbid a student setting `materialId` — that
-field is the admin's answer.
+The one-per-person limit is enforced in the client and shown in the UI, not in
+the rules. A second ask costs nothing but a decline, and keeping it out of the
+rules avoids a republish for a free trial.
 
 ## Navigation
 

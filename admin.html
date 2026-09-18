@@ -340,7 +340,6 @@
 
 <!-- ══ ASSIGN MODAL ══ -->
 <input type="file" id="cover-file" accept="image/*" hidden>
-<input type="file" id="sample-file" accept=".html,.jsx,.tsx,.pdf,text/html,application/pdf" hidden>
 
 <div class="modal-bg" id="assign-modal">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="assign-title">
@@ -358,7 +357,7 @@
 import { requireAuth, doSignOut } from './assets/js/session.js';
 import {
   db, doc, getDoc, setDoc, addDoc, updateDoc, deleteDoc,
-  collection, getDocs, query, where, arrayRemove, deleteField
+  collection, getDocs, query, where, arrayRemove, arrayUnion, deleteField
 } from './assets/js/firebase.js';
 import { FIREBASE_CONFIG } from './assets/js/config.js';
 import { makeCover } from './assets/js/images.js';
@@ -824,11 +823,6 @@ async function loadMaterialsList() {
           title: m.hasCover ? 'Replace the store picture' : 'Upload a 16:9 store picture',
           onclick: () => pickCover(d.id, m.title)
         }, m.hasCover ? '🖼 Cover ✓' : '🖼 Cover'),
-        el('button', {
-          class: 'btn btn-secondary btn-sm',
-          title: m.hasSample ? 'Replace the free sample' : 'Upload a free sample',
-          onclick: () => pickSample(d.id, m.title)
-        }, m.hasSample ? '👁 Sample ✓' : '＋ Sample'),
         el('button', { class: 'btn btn-danger btn-sm', onclick: () => deleteMaterial(d.id, m.title) }, 'Delete')
       )
     ));
@@ -902,58 +896,6 @@ coverInput.addEventListener('change', async () => {
     toast(e.message || 'Could not use that image', 'err');
   } finally {
     _coverFor = null;
-  }
-});
-
-/* ── SAMPLES ──────────────────────────────────────────── */
-let _sampleFor = null;
-const sampleInput = document.getElementById('sample-file');
-
-function pickSample(id, title) {
-  _sampleFor = { id, title };
-  sampleInput.value = '';
-  sampleInput.click();
-}
-
-sampleInput.addEventListener('change', async () => {
-  const file = sampleInput.files[0];
-  if (!file || !_sampleFor) return;
-  const { id, title } = _sampleFor;
-
-  const ext = file.name.toLowerCase().split('.').pop();
-  if (!['html', 'jsx', 'tsx', 'pdf'].includes(ext)) {
-    toast('Samples must be .html, .jsx, .tsx or .pdf', 'err'); return;
-  }
-  const isPdf = ext === 'pdf';
-  if (file.size > (isPdf ? 700 : 900) * 1024) {
-    toast('Sample too large — keep it well under the full material', 'err'); return;
-  }
-
-  toast(`Uploading sample for "${title}"…`);
-  try {
-    const text = await new Promise((resolve, reject) => {
-      const r = new FileReader();
-      r.onload = e => resolve(e.target.result);
-      r.onerror = () => reject(new Error('Could not read the file'));
-      if (isPdf) r.readAsDataURL(file); else r.readAsText(file);
-    });
-
-    const content = isPdf
-      ? { pdfContent: text.slice(text.indexOf(',') + 1), sourceType: 'inline-pdf' }
-      : ext === 'html'
-        ? { htmlContent: text, sourceType: 'inline' }
-        : { jsxContent: text, sourceType: 'inline-jsx' };
-
-    await setDoc(doc(db, 'materialSample', id), { ...content, updatedAt: Date.now() });
-    // hasSample lives on the metadata so the store can show the right
-    // button without downloading every sample to find out.
-    await updateDoc(doc(db, 'materials', id), { hasSample: true });
-    toast('Sample added — anyone signed in can now preview it', 'ok');
-    loadMaterialsList();
-  } catch (e) {
-    toast('Error: ' + e.message, 'err');
-  } finally {
-    _sampleFor = null;
   }
 });
 
@@ -1278,13 +1220,14 @@ function renderRequests() {
 
     const actions = el('div', { class: 'list-actions', style: 'margin-top:12px' });
 
-    // A sample request is answered by uploading a sample, so send the
-    // admin straight to that material rather than the generic flow.
-    if (r.kind === REQ_KIND.SAMPLE && r.sampleOf) {
+    // A free-sample request is answered by giving the person one
+    // material outright, so it reuses the same grant the payment flow
+    // uses rather than inventing a second way to hand something over.
+    if (r.kind === REQ_KIND.SAMPLE && r.status !== REQ_STATUS.FULFILLED) {
       actions.append(el('button', {
         class: 'btn btn-primary btn-sm',
-        onclick: () => { switchTab('materials'); setTimeout(() => pickSample(r.sampleOf, r.chapter), 400); }
-      }, '＋ Upload the sample'));
+        onclick: () => sendSample(r)
+      }, '🎁 Send a sample'));
     }
 
     if (r.status === REQ_STATUS.OPEN) {
@@ -1310,6 +1253,37 @@ function renderRequests() {
     box.append(actions);
     return box;
   }));
+}
+
+/**
+ * Give this person one material free and close their request.
+ * Grants first: if the ledger-style bookkeeping below failed, the
+ * student still has what they were promised.
+ */
+async function sendSample(r) {
+  const options = _materialsForReq.map((m, i) => `${i + 1}. ${m.title}`).join('\n');
+  const pick = prompt(
+    `Send ${r.email} a free sample.\n\nWhich material?\n\n${options}\n\nEnter its number:`, '');
+  if (pick === null) return;
+
+  const n = parseInt(pick, 10);
+  if (!Number.isInteger(n) || n < 1 || n > _materialsForReq.length) {
+    toast('That number is not in the list', 'err'); return;
+  }
+  const material = _materialsForReq[n - 1];
+
+  const note = prompt('Optional message the student will see:',
+    `Here's a free sample — "${material.title}". Hope it helps.`);
+  if (note === null) return;
+
+  try {
+    await updateDoc(doc(db, 'students', r.email), { files: arrayUnion(material.id) });
+    await fulfilRequest(r.id, material.id, note.trim());
+    toast(`Sent "${material.title}" to ${r.email}`, 'ok');
+    loadRequests();
+  } catch (e) {
+    toast('Error: ' + e.message, 'err');
+  }
 }
 
 async function plan(r) {

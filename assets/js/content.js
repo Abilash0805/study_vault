@@ -33,7 +33,6 @@ export function toMeta(id, m) {
     createdAt: m.createdAt || null,
     pricePaise: Number.isFinite(m.pricePaise) ? m.pricePaise : null,
     published: m.published !== false,
-    hasSample: m.hasSample === true,
     hasCover: m.hasCover === true,
     kind: m.kind || inferKind(m)
   };
@@ -98,20 +97,6 @@ export async function readContent(id) {
   }
 
   return data;
-}
-
-/**
- * Free preview for a material.
- *
- * Samples live in their own collection and are readable by anyone
- * signed in — that is the point of a sample. The material's metadata
- * carries hasSample so the store can show the right button without
- * pulling every sample document just to find out.
- */
-export async function readSample(id) {
-  const snap = await getDoc(doc(db, 'materialSample', id));
-  if (!snap.exists()) throw new Error('No sample has been added for this material yet.');
-  return snap.data();
 }
 
 /**

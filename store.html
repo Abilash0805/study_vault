@@ -44,6 +44,8 @@
     <p>Browse available study materials. Anything you already own is marked — you'll never be charged twice.</p>
   </div>
 
+  <div id="sample-banner" hidden></div>
+
   <div class="filters" id="filters"></div>
 
   <div id="content">
@@ -54,7 +56,7 @@
 <script type="module">
 import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
 import { listMaterials, kindIcon, readCover } from './assets/js/content.js';
-import { createSampleRequest } from './assets/js/requests.js';
+import { createFreeSampleRequest, findMySampleRequest, REQ_STATUS } from './assets/js/requests.js';
 import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount, friendlyError } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
 
@@ -153,43 +155,76 @@ function tile(m) {
 
   card.append(foot);
 
-  // Let people see something before paying. A ready-made sample opens
-  // straight away; without one, they can ask and the admin gets it in
-  // the same queue as chapter requests.
-  if (!isOwned && !free) {
-    card.append(m.hasSample
-      ? el('a', {
-          class: 'sample-link',
-          href: `viewer.html?id=${encodeURIComponent(m.id)}&sample=1`
-        }, '👁 View a sample')
-      : el('button', {
-          class: 'sample-link',
-          onclick: (e) => askForSample(m, e.target)
-        }, '✉ Ask for a sample'));
-  }
-
   return card;
 }
 
-async function askForSample(m, btn) {
-  const note = prompt(
-    `Ask for a sample of "${m.title}"?\n\n` +
-    `Anything specific you want to see? (optional)`, '');
-  if (note === null) return;
-  btn.disabled = true;
-  const original = btn.textContent;
-  btn.textContent = 'Sending…';
-  try {
-    await createSampleRequest({
-      email: user.email, name: user.displayName || '', material: m, note
-    });
-    btn.textContent = '✓ Sample requested';
-    toast('Asked — you\'ll see it on your Requests page', 'ok');
-  } catch (e) {
-    btn.disabled = false;
-    btn.textContent = original;
-    toast(e.message || 'Could not send the request', 'err');
+/**
+ * One free sample per person, not per material.
+ *
+ * A new student's real question is "is this teacher any good?", which
+ * one sample answers. Offering a preview on every tile asked them to
+ * decide fifteen times and gave the instructor fifteen jobs.
+ */
+async function renderSampleBanner() {
+  const host = document.getElementById('sample-banner');
+  let req = null;
+  try { req = await findMySampleRequest(user.email); }
+  catch (e) { host.hidden = true; return; }      // never block the store
+
+  host.hidden = false;
+
+  if (req && req.status === REQ_STATUS.FULFILLED) {
+    fill(host, el('div', { class: 'sample-banner is-done' },
+      el('span', { class: 'sample-banner-ico' }, '✓'),
+      el('div', { class: 'sample-banner-body' },
+        el('strong', {}, 'Your free sample is ready'),
+        el('span', {}, req.adminNote || 'It has been added to My Materials.')),
+      req.materialId
+        ? el('a', { class: 'btn btn-primary btn-sm',
+                    href: `viewer.html?id=${encodeURIComponent(req.materialId)}` }, 'Open it')
+        : el('a', { class: 'btn btn-secondary btn-sm', href: 'library.html' }, 'My Materials')
+    ));
+    return;
   }
+
+  if (req) {
+    fill(host, el('div', { class: 'sample-banner is-waiting' },
+      el('span', { class: 'sample-banner-ico' }, '⏳'),
+      el('div', { class: 'sample-banner-body' },
+        el('strong', {}, 'Your free sample is on its way'),
+        el('span', {}, 'Your instructor will send one shortly — watch My Materials.'))
+    ));
+    return;
+  }
+
+  const btn = el('button', { class: 'btn btn-primary btn-sm' }, 'Ask for a free sample');
+  btn.addEventListener('click', async () => {
+    const note = prompt(
+      'Ask for a free sample?\n\n' +
+      'Which subject or chapter would help most? (optional)', '');
+    if (note === null) return;
+    btn.disabled = true;
+    btn.textContent = 'Sending…';
+    try {
+      await createFreeSampleRequest({
+        email: user.email, name: user.displayName || '', note
+      });
+      toast('Asked — your instructor will send a sample', 'ok');
+      renderSampleBanner();
+    } catch (e) {
+      btn.disabled = false;
+      btn.textContent = 'Ask for a free sample';
+      toast(e.message || 'Could not send the request', 'err');
+    }
+  });
+
+  fill(host, el('div', { class: 'sample-banner' },
+    el('span', { class: 'sample-banner-ico' }, '🎁'),
+    el('div', { class: 'sample-banner-body' },
+      el('strong', {}, 'New here? Try before you buy'),
+      el('span', {}, 'Get one free sample so you can see the teaching first.')),
+    btn
+  ));
 }
 
 function render() {
@@ -246,6 +281,7 @@ try {
   } else {
     render();
   }
+  renderSampleBanner();
 } catch (e) {
   console.error('store:', e);
   fill(contentEl, emptyState('⚠️', 'Could not load the store', friendlyError(e, { isAdmin })));

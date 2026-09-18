@@ -321,14 +321,18 @@ html:not(.booting) #boot{display:none;}
 .tile-title{font-weight:500;font-size:.9rem;color:var(--ink);margin-bottom:4px;line-height:1.4;}
 .tile-meta{font-size:.75rem;color:var(--muted);}
 
-.sample-link{
-  display:block;width:100%;margin-top:9px;padding:7px 0 0;
-  border:none;border-top:1px dashed var(--border);background:none;
-  font-family:inherit;font-size:.76rem;color:var(--accent-ink);
-  cursor:pointer;text-align:center;
+.sample-banner{
+  display:flex;align-items:center;gap:14px;flex-wrap:wrap;
+  background:linear-gradient(135deg,var(--accent-soft),var(--success-soft));
+  border:1px solid var(--accent-line);border-radius:var(--radius);
+  padding:16px 18px;margin-bottom:20px;
 }
-.sample-link:hover{text-decoration:underline;}
-.sample-link:disabled{color:var(--success-ink);cursor:default;text-decoration:none;}
+.sample-banner.is-waiting{background:var(--warn-soft);border-color:#fde68a;}
+.sample-banner.is-done{background:var(--success-soft);border-color:#a7f3d0;}
+.sample-banner-ico{font-size:1.6rem;line-height:1;flex-shrink:0;}
+.sample-banner-body{flex:1;min-width:180px;display:flex;flex-direction:column;gap:2px;}
+.sample-banner-body strong{font-weight:500;font-size:.92rem;color:var(--ink);}
+.sample-banner-body span{font-size:.8rem;color:var(--ink2);line-height:1.5;}
 
 /* ── SECTION HEADING ────────────────────────────────────── */
 .section{margin-bottom:30px;}

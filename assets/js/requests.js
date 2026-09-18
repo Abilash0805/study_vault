@@ -88,38 +88,43 @@ export async function createRequest({ email, name, subject, chapter, details }) 
 }
 
 /**
- * "Can I see a sample first?" — the same queue as chapter requests, so
- * it lands in one place for the admin rather than a second inbox.
+ * "Can I see a sample first?" — one per person, ever.
  *
- * The material id is stored as `sampleOf`, not `materialId`: that field
- * is reserved for the admin's answer, and the rules forbid a student
- * setting it at creation.
+ * Not per material: the point is to let a new student try the
+ * teaching once before paying for anything, so it is a single ask
+ * tied to the person rather than a catalogue of previews.
+ *
+ * The limit is enforced here and shown in the UI, not in the rules.
+ * A second ask costs nothing but the admin's time to decline, and
+ * keeping it out of the rules avoids a republish for a free trial.
  */
-export async function createSampleRequest({ email, name, material, note }) {
-  const mine = await listMyRequests(email);
-  const dupe = mine.find(r =>
-    r.kind === REQ_KIND.SAMPLE && r.sampleOf === material.id &&
-    (r.status === REQ_STATUS.OPEN || r.status === REQ_STATUS.PLANNED));
-  if (dupe) throw new Error('You have already asked for a sample of this one.');
-
-  const open = mine.filter(r => r.status === REQ_STATUS.OPEN).length;
-  if (open >= MAX_OPEN_PER_STUDENT) {
-    throw new Error(`You already have ${open} requests waiting for review.`);
+export async function createFreeSampleRequest({ email, name, note }) {
+  const existing = await findMySampleRequest(email);
+  if (existing) {
+    throw new Error(existing.status === REQ_STATUS.FULFILLED
+      ? 'You have already had your free sample.'
+      : 'Your sample request is already with your instructor.');
   }
 
   const ref = await addDoc(collection(db, 'requests'), {
     email: email.toLowerCase(),
     name: (name || '').trim(),
     kind: REQ_KIND.SAMPLE,
-    sampleOf: material.id,
-    subject: (material.tag || '').trim(),
-    chapter: material.title,
+    subject: '',
+    chapter: 'Free sample',
     details: (note || '').trim(),
     status: REQ_STATUS.OPEN,
     createdAt: Date.now(),
     updatedAt: Date.now()
   });
   return ref.id;
+}
+
+/** The one sample request this person has, if any. */
+export async function findMySampleRequest(email) {
+  const mine = await listMyRequests(email);
+  return mine.find(r => r.kind === REQ_KIND.SAMPLE &&
+    r.status !== REQ_STATUS.WITHDRAWN && r.status !== REQ_STATUS.DECLINED) || null;
 }
 
 /** The student's only write after creating: walking it back. */
