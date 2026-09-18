@@ -1356,6 +1356,8 @@ const PROBES = [
     run: () => getDocs(collection(db, 'materials')) },
   { key: 'materialContent', label: 'materialContent (the paid bytes)',
     run: () => getDocs(collection(db, 'materialContent')) },
+  { key: 'materialCover',   label: 'materialCover (store tile pictures)',
+    run: () => getDocs(collection(db, 'materialCover')) },
   { key: 'folders',         label: 'folders',
     run: () => getDocs(collection(db, 'folders')) },
   { key: 'students',        label: 'students',

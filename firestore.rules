@@ -82,8 +82,8 @@ service cloud.firestore {
 
     // ── MATERIAL COVERS ─────────────────────────────────────
     // A 16:9 picture shown on the store tile. Readable by anyone
-    // signed in, same as the sample — it exists to be seen before
-    // buying. Kept out of materials/{id} on purpose: the store lists
+    // signed in on purpose: it exists to be seen before buying.
+    // Kept out of materials/{id} deliberately: the store lists
     // every material's metadata, so a cover there would download
     // every image on every visit.
     match /materialCover/{id} {
