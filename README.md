@@ -253,6 +253,33 @@ a gesture people have to already know; the bar puts them on screen the way
 every app on a phone does. "More" opens the drawer for Orders, Admin and sign
 out. Above 1040px the top nav takes over and the bar is hidden.
 
+## Store cover images
+
+Each material can carry a 16:9 picture shown on its store tile.
+
+```
+materialCover/{id}      { dataUrl }          ← a 640x360 JPEG
+materials/{id}.hasCover true when one exists
+```
+
+Upload from **Admin → Study Materials → 🖼 Cover**. Whatever is picked is
+**centre-cropped to 16:9 and downscaled to 640x360 JPEG in the browser** before
+it is stored, stepping the quality down until it fits under 150 KB — a phone
+photo is several MB and the wrong shape, and neither should reach Firestore.
+
+**Covers are deliberately not on `materials/{id}`.** The store lists every
+material's metadata on load, so a cover there would download every picture on
+every visit. Instead each cover is its own document, fetched only when its tile
+comes near the viewport (`IntersectionObserver`, 300px margin) and cached for
+the session. A tile always renders a 16:9 box — gradient and icon when there is
+no picture — so the grid stays level and adding a cover later doesn't reflow
+the page.
+
+> If the catalogue ever grows past a few hundred materials, or covers need to
+> be bigger, move them to Firebase Storage: CDN-served and browser-cached,
+> with no Firestore read per view. At this size the extra subsystem isn't
+> worth it.
+
 ## A note on "no download"
 
 The viewer disables right-click and the usual save shortcuts, and PDFs are

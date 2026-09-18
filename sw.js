@@ -3,7 +3,7 @@
 //  Network-first with a cache fallback, so a deploy is picked up
 //  immediately but the app still opens on a flaky connection.
 // ═══════════════════════════════════════════════════════════
-const CACHE = 'chapterkit-v11';
+const CACHE = 'chapterkit-v12';
 
 const SHELL = [
   './',
@@ -28,7 +28,8 @@ const SHELL = [
   'assets/js/render.js',
   'assets/js/cart.js',
   'assets/js/orders.js',
-  'assets/js/requests.js'
+  'assets/js/requests.js',
+  'assets/js/images.js'
 ];
 
 // Hosts that must always hit the network: auth, database, and the CDN

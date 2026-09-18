@@ -53,7 +53,7 @@
 
 <script type="module">
 import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
-import { listMaterials, kindIcon } from './assets/js/content.js';
+import { listMaterials, kindIcon, readCover } from './assets/js/content.js';
 import { createSampleRequest } from './assets/js/requests.js';
 import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount, friendlyError } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
@@ -66,6 +66,47 @@ cart.onChange(setCartCount);
 const contentEl = document.getElementById('content');
 const filtersEl = document.getElementById('filters');
 
+/**
+ * Covers are fetched one document at a time, and only once a tile is
+ * close to the viewport. Loading them with the catalogue would mean
+ * downloading every picture on every store visit — the reason covers
+ * are not stored on the material metadata in the first place.
+ */
+const coverQueue = (() => {
+  const pending = new WeakMap();
+  const io = 'IntersectionObserver' in window
+    ? new IntersectionObserver(entries => {
+        for (const e of entries) {
+          if (!e.isIntersecting) continue;
+          const box = e.target;
+          io.unobserve(box);
+          load(box, pending.get(box));
+        }
+      }, { rootMargin: '300px' })
+    : null;
+
+  async function load(box, id) {
+    if (!id) return;
+    try {
+      const url = await readCover(id);
+      if (!url) return;                       // flag set but nothing stored
+      const img = el('img', { src: url, alt: '', loading: 'lazy', decoding: 'async' });
+      img.addEventListener('load', () => box.classList.add('has-img'));
+      box.replaceChildren(img);
+    } catch (e) {
+      // a missing cover is cosmetic — keep the placeholder and move on
+      console.debug('cover', id, e?.code || e?.message);
+    }
+  }
+
+  return {
+    observe(box, id) {
+      pending.set(box, id);
+      if (io) io.observe(box); else load(box, id);
+    }
+  };
+})();
+
 let forSale = [];
 let owned = new Set();
 let activeTag = 'all';
@@ -76,8 +117,14 @@ function tile(m) {
   const inCart  = cart.has(m.id);
   const free    = !m.pricePaise;
 
+  // Every tile gets a 16:9 box whether or not a picture exists, so the
+  // grid stays level and adding a cover later doesn't reflow the page.
+  const cover = el('div', { class: 'tile-cover' },
+    el('span', { class: 'tile-cover-ico', 'aria-hidden': 'true' }, kindIcon(m.kind, m.id)));
+  if (m.hasCover) coverQueue.observe(cover, m.id);
+
   const card = el('div', { class: 'tile', style: 'cursor:default' },
-    el('span', { class: 'tile-ico' }, kindIcon(m.kind, m.id)),
+    cover,
     el('div', { class: 'tile-title' }, m.title),
     el('div', { class: 'tile-meta' }, m.tag || 'General')
   );

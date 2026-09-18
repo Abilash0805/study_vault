@@ -339,6 +339,7 @@
 </main>
 
 <!-- ══ ASSIGN MODAL ══ -->
+<input type="file" id="cover-file" accept="image/*" hidden>
 <input type="file" id="sample-file" accept=".html,.jsx,.tsx,.pdf,text/html,application/pdf" hidden>
 
 <div class="modal-bg" id="assign-modal">
@@ -360,6 +361,7 @@ import {
   collection, getDocs, query, where, arrayRemove, deleteField
 } from './assets/js/firebase.js';
 import { FIREBASE_CONFIG } from './assets/js/config.js';
+import { makeCover } from './assets/js/images.js';
 import { listFolders, listMaterials, inferKind, CONTENT_FIELDS, hasInlineContent } from './assets/js/content.js';
 import {
   STATUS, STATUS_META, listAllOrders, listLedger, ledgerTotal, auditOrder,
@@ -817,6 +819,16 @@ async function loadMaterialsList() {
           class: 'move-select',
           onchange: e => moveMaterial(d.id, e.target.value)
         }, ...folderOptions(foldersCache, m.folderId || '', null)),
+        el('button', {
+          class: 'btn btn-secondary btn-sm',
+          title: m.hasCover ? 'Replace the store picture' : 'Upload a 16:9 store picture',
+          onclick: () => pickCover(d.id, m.title)
+        }, m.hasCover ? '🖼 Cover ✓' : '🖼 Cover'),
+        el('button', {
+          class: 'btn btn-secondary btn-sm',
+          title: m.hasSample ? 'Replace the free sample' : 'Upload a free sample',
+          onclick: () => pickSample(d.id, m.title)
+        }, m.hasSample ? '👁 Sample ✓' : '＋ Sample'),
         el('button', { class: 'btn btn-danger btn-sm', onclick: () => deleteMaterial(d.id, m.title) }, 'Delete')
       )
     ));
@@ -856,6 +868,42 @@ async function setPublished(id, published) {
     toast(published ? 'Listed in the store' : 'Hidden from the store', 'ok');
   } catch (e) { toast('Error: ' + e.message, 'err'); }
 }
+
+/* ── COVERS ───────────────────────────────────────────── */
+let _coverFor = null;
+const coverInput = document.getElementById('cover-file');
+
+function pickCover(id, title) {
+  _coverFor = { id, title };
+  coverInput.value = '';
+  coverInput.click();
+}
+
+coverInput.addEventListener('change', async () => {
+  const file = coverInput.files[0];
+  if (!file || !_coverFor) return;
+  const { id, title } = _coverFor;
+
+  toast(`Processing picture for "${title}"…`);
+  try {
+    // Whatever shape was picked, it is centre-cropped to 16:9 and
+    // downscaled here — a phone photo would otherwise be several MB
+    // and the wrong aspect ratio on the tile.
+    const { dataUrl, bytes } = await makeCover(file);
+
+    await setDoc(doc(db, 'materialCover', id), { dataUrl, updatedAt: Date.now() });
+    // hasCover lives on the metadata so the store knows which tiles to
+    // fetch a picture for, without reading every cover to find out.
+    await updateDoc(doc(db, 'materials', id), { hasCover: true });
+
+    toast(`Cover set (${Math.round(bytes / 1024)} KB)`, 'ok');
+    loadMaterialsList();
+  } catch (e) {
+    toast(e.message || 'Could not use that image', 'err');
+  } finally {
+    _coverFor = null;
+  }
+});
 
 /* ── SAMPLES ──────────────────────────────────────────── */
 let _sampleFor = null;

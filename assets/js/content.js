@@ -34,6 +34,7 @@ export function toMeta(id, m) {
     pricePaise: Number.isFinite(m.pricePaise) ? m.pricePaise : null,
     published: m.published !== false,
     hasSample: m.hasSample === true,
+    hasCover: m.hasCover === true,
     kind: m.kind || inferKind(m)
   };
 }
@@ -111,6 +112,21 @@ export async function readSample(id) {
   const snap = await getDoc(doc(db, 'materialSample', id));
   if (!snap.exists()) throw new Error('No sample has been added for this material yet.');
   return snap.data();
+}
+
+/**
+ * Store-tile cover, fetched one at a time only when a tile is
+ * actually near the viewport. Kept in a module-level cache so
+ * scrolling back up doesn't re-read the same document.
+ */
+const _coverCache = new Map();
+
+export async function readCover(id) {
+  if (_coverCache.has(id)) return _coverCache.get(id);
+  const snap = await getDoc(doc(db, 'materialCover', id));
+  const url = snap.exists() ? (snap.data().dataUrl || null) : null;
+  _coverCache.set(id, url);
+  return url;
 }
 
 /**
