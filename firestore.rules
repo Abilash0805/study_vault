@@ -1,7 +1,7 @@
 rules_version = '2';
 
 // ═══════════════════════════════════════════════════════════════
-//  StudyVault — Firestore security rules
+//  Chapter Kit — Firestore security rules
 //
 //  Deploy:  Firebase Console → Firestore Database → Rules → paste
 //           → Publish.  (Or `firebase deploy --only firestore:rules`)
