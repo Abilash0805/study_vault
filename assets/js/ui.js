@@ -85,12 +85,14 @@ export function emptyState(icon, title, detail) {
 
 /* ── site chrome ──────────────────────────────────────── */
 
+// `primary` items get a slot in the mobile bottom bar. Everything else
+// lives behind "More", which opens the same drawer.
 const NAV = [
-  { id: 'store',   href: 'store.html',   icon: '🛍️', label: 'Store' },
-  { id: 'library', href: 'library.html', icon: '📚', label: 'My Materials' },
-  { id: 'request', href: 'request.html', icon: '💡', label: 'Request' },
+  { id: 'store',   href: 'store.html',   icon: '🛍️', label: 'Store',        primary: true },
+  { id: 'library', href: 'library.html', icon: '📚', label: 'My Materials', primary: true, shortLabel: 'Materials' },
+  { id: 'request', href: 'request.html', icon: '💡', label: 'Request',      primary: true },
+  { id: 'cart',    href: 'cart.html',    icon: '🛒', label: 'Cart', badge: true, primary: true },
   { id: 'orders',  href: 'orders.html',  icon: '🧾', label: 'Orders' },
-  { id: 'cart',    href: 'cart.html',    icon: '🛒', label: 'Cart', badge: true },
   { id: 'admin',   href: 'admin.html',   icon: '⚙',  label: 'Admin', adminOnly: true }
 ];
 
@@ -113,6 +115,44 @@ export function setCartCount(n) {
     b.textContent = String(n);
     b.hidden = !n;
   });
+}
+
+/**
+ * Mobile bottom tab bar.
+ *
+ * A hamburger hides navigation behind a gesture people have to already
+ * know about; a bottom bar is the pattern every app on the phone uses,
+ * so the destinations are simply visible. "More" opens the drawer for
+ * the rest.
+ */
+function bottomNav(active, isAdmin, onMore) {
+  const items = NAV.filter(n => n.primary && (!n.adminOnly || isAdmin));
+
+  const tabs = items.map(n => {
+    const tab = el('a', {
+      class: 'bn-item' + (n.id === active ? ' active' : ''),
+      href: n.href,
+      'aria-current': n.id === active ? 'page' : null
+    },
+      el('span', { class: 'bn-ico', 'aria-hidden': 'true' }, n.icon),
+      el('span', {}, n.shortLabel || n.label)
+    );
+    if (n.badge) tab.append(el('span', { class: 'cart-count', hidden: true }, '0'));
+    return tab;
+  });
+
+  // "More" is active whenever the current page isn't one of the tabs.
+  const onMorePage = !items.some(n => n.id === active);
+  tabs.push(el('button', {
+    class: 'bn-item' + (onMorePage ? ' active' : ''),
+    'aria-label': 'More options',
+    onclick: onMore
+  },
+    el('span', { class: 'bn-ico', 'aria-hidden': 'true' }, '☰'),
+    el('span', {}, 'More')
+  ));
+
+  return el('nav', { class: 'bottom-nav', 'aria-label': 'Main' }, ...tabs);
 }
 
 /**
@@ -156,10 +196,6 @@ export function mountChrome({ active, user, isAdmin, onSignOut }) {
 
   const header = el('header', { class: 'site-header' },
     el('div', { class: 'site-header-inner' },
-      el('button', {
-        class: 'hamburger', 'aria-label': 'Open menu',
-        onclick: () => toggleDrawer(true)
-      }, '☰'),
       el('a', { class: 'brand', href: 'library.html' },
         el('img', { src: 'icon-192.png', alt: '' }),
         'Chapter\u00A0', el('span', {}, 'Kit')
@@ -175,7 +211,10 @@ export function mountChrome({ active, user, isAdmin, onSignOut }) {
   );
 
   host.replaceWith(header);
-  document.body.append(drawer, backdrop);
+  document.body.append(drawer, backdrop,
+    bottomNav(active, isAdmin, () => toggleDrawer(true)));
+  // reserves space so the bar never covers the last row of content
+  document.body.classList.add('has-bottom-nav');
 }
 
 export function toggleDrawer(open) {

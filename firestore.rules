@@ -80,6 +80,15 @@ service cloud.firestore {
       allow write: if isAdmin();
     }
 
+    // ── MATERIAL SAMPLES ────────────────────────────────────
+    // A free preview of a paid material. Readable by anyone signed in
+    // on purpose: its whole job is to be seen before buying. Keep real
+    // content out of here — this collection is not gated.
+    match /materialSample/{id} {
+      allow read:  if signedIn();
+      allow write: if isAdmin();
+    }
+
     // ── FOLDERS ─────────────────────────────────────────────
     // Names only, so students can see the tree they've been given.
     match /folders/{id} {

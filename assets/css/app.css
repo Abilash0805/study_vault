@@ -312,6 +312,15 @@ html:not(.booting) #boot{display:none;}
 .tile-title{font-weight:500;font-size:.9rem;color:var(--ink);margin-bottom:4px;line-height:1.4;}
 .tile-meta{font-size:.75rem;color:var(--muted);}
 
+.sample-link{
+  display:block;width:100%;margin-top:9px;padding:7px 0 0;
+  border:none;border-top:1px dashed var(--border);background:none;
+  font-family:inherit;font-size:.76rem;color:var(--accent-ink);
+  cursor:pointer;text-align:center;
+}
+.sample-link:hover{text-decoration:underline;}
+.sample-link:disabled{color:var(--success-ink);cursor:default;text-decoration:none;}
+
 /* ── SECTION HEADING ────────────────────────────────────── */
 .section{margin-bottom:30px;}
 .section-head{display:flex;align-items:center;gap:12px;margin-bottom:14px;}
@@ -402,6 +411,56 @@ html:not(.booting) #boot{display:none;}
 .toast.show{opacity:1;transform:translateY(0);}
 .toast.ok{background:var(--success-ink);}
 .toast.err{background:var(--danger);}
+
+
+/* ── MOBILE BOTTOM NAV ──────────────────────────────────
+   The drawer was the only way to switch sections on a phone, and a
+   hamburger is a gesture people have to already know. A bottom bar
+   puts the destinations on screen, the way every app on the phone
+   does, so nothing has to be discovered. */
+.bottom-nav{
+  position:fixed;left:0;right:0;bottom:0;z-index:300;
+  display:flex;background:var(--card);
+  border-top:1px solid var(--border);
+  box-shadow:0 -2px 14px rgba(22,23,38,.07);
+  padding-bottom:env(safe-area-inset-bottom,0px);
+}
+@media(min-width:1040px){.bottom-nav{display:none;}}
+
+.bn-item{
+  flex:1 1 0;min-width:0;position:relative;
+  display:flex;flex-direction:column;align-items:center;justify-content:center;gap:3px;
+  padding:9px 3px 8px;min-height:56px;
+  background:none;border:none;font-family:inherit;font-size:.66rem;
+  color:var(--muted);cursor:pointer;text-decoration:none;
+  -webkit-tap-highlight-color:transparent;
+  transition:color .15s;
+}
+.bn-item:hover,.bn-item:active{text-decoration:none;color:var(--ink2);}
+.bn-item.active{color:var(--accent-ink);font-weight:500;}
+.bn-item span:last-child{
+  max-width:100%;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;
+}
+.bn-ico{font-size:1.3rem;line-height:1;}
+/* a slim bar above the active tab, the usual "you are here" cue */
+.bn-item.active::before{
+  content:'';position:absolute;top:0;left:22%;right:22%;height:3px;
+  border-radius:0 0 3px 3px;background:var(--accent-grad);
+}
+.bn-item .cart-count{
+  position:absolute;top:4px;left:50%;margin-left:3px;
+}
+
+/* Keep the last row of content clear of the bar. */
+@media(max-width:1039px){
+  body.has-bottom-nav{
+    padding-bottom:calc(58px + env(safe-area-inset-bottom,0px));
+  }
+  /* the toast would otherwise sit behind it */
+  body.has-bottom-nav .toast{
+    bottom:calc(70px + env(safe-area-inset-bottom,0px));
+  }
+}
 
 /* ── FOOTER ─────────────────────────────────────────────── */
 .site-footer{

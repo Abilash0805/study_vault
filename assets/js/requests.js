@@ -34,6 +34,8 @@ export const MAX_OPEN_PER_STUDENT = 5;
 
 export const LIMITS = { subject: 60, chapter: 140, details: 1000 };
 
+export const REQ_KIND = { MATERIAL: 'material', SAMPLE: 'sample' };
+
 export function validate({ subject, chapter, details }) {
   const errors = [];
   if (!chapter || !chapter.trim()) errors.push('Tell us which chapter or topic you need.');
@@ -78,6 +80,41 @@ export async function createRequest({ email, name, subject, chapter, details }) 
     subject: (subject || '').trim(),
     chapter: chapter.trim(),
     details: (details || '').trim(),
+    status: REQ_STATUS.OPEN,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  });
+  return ref.id;
+}
+
+/**
+ * "Can I see a sample first?" — the same queue as chapter requests, so
+ * it lands in one place for the admin rather than a second inbox.
+ *
+ * The material id is stored as `sampleOf`, not `materialId`: that field
+ * is reserved for the admin's answer, and the rules forbid a student
+ * setting it at creation.
+ */
+export async function createSampleRequest({ email, name, material, note }) {
+  const mine = await listMyRequests(email);
+  const dupe = mine.find(r =>
+    r.kind === REQ_KIND.SAMPLE && r.sampleOf === material.id &&
+    (r.status === REQ_STATUS.OPEN || r.status === REQ_STATUS.PLANNED));
+  if (dupe) throw new Error('You have already asked for a sample of this one.');
+
+  const open = mine.filter(r => r.status === REQ_STATUS.OPEN).length;
+  if (open >= MAX_OPEN_PER_STUDENT) {
+    throw new Error(`You already have ${open} requests waiting for review.`);
+  }
+
+  const ref = await addDoc(collection(db, 'requests'), {
+    email: email.toLowerCase(),
+    name: (name || '').trim(),
+    kind: REQ_KIND.SAMPLE,
+    sampleOf: material.id,
+    subject: (material.tag || '').trim(),
+    chapter: material.title,
+    details: (note || '').trim(),
     status: REQ_STATUS.OPEN,
     createdAt: Date.now(),
     updatedAt: Date.now()

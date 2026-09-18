@@ -54,6 +54,7 @@
 <script type="module">
 import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
 import { listMaterials, kindIcon } from './assets/js/content.js';
+import { createSampleRequest } from './assets/js/requests.js';
 import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount, friendlyError } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
 
@@ -104,7 +105,44 @@ function tile(m) {
   }
 
   card.append(foot);
+
+  // Let people see something before paying. A ready-made sample opens
+  // straight away; without one, they can ask and the admin gets it in
+  // the same queue as chapter requests.
+  if (!isOwned && !free) {
+    card.append(m.hasSample
+      ? el('a', {
+          class: 'sample-link',
+          href: `viewer.html?id=${encodeURIComponent(m.id)}&sample=1`
+        }, '👁 View a sample')
+      : el('button', {
+          class: 'sample-link',
+          onclick: (e) => askForSample(m, e.target)
+        }, '✉ Ask for a sample'));
+  }
+
   return card;
+}
+
+async function askForSample(m, btn) {
+  const note = prompt(
+    `Ask for a sample of "${m.title}"?\n\n` +
+    `Anything specific you want to see? (optional)`, '');
+  if (note === null) return;
+  btn.disabled = true;
+  const original = btn.textContent;
+  btn.textContent = 'Sending…';
+  try {
+    await createSampleRequest({
+      email: user.email, name: user.displayName || '', material: m, note
+    });
+    btn.textContent = '✓ Sample requested';
+    toast('Asked — you\'ll see it on your Requests page', 'ok');
+  } catch (e) {
+    btn.disabled = false;
+    btn.textContent = original;
+    toast(e.message || 'Could not send the request', 'err');
+  }
 }
 
 function render() {

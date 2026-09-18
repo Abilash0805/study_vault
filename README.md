@@ -220,6 +220,39 @@ The store is currently `noindex` because it requires sign-in. If you ever make
 the catalogue publicly browsable, that is the one page worth indexing — remove
 its `noindex`, drop it from `robots.txt`, and add it to `sitemap.xml`.
 
+## Free samples
+
+A paid material can carry a free preview so people can see something before
+buying. Samples live in their own collection:
+
+```
+materialSample/{id}   { htmlContent | jsxContent | pdfContent }
+materials/{id}.hasSample   true when one exists
+```
+
+`materialSample` is readable by **anyone signed in** — that is the whole point
+of a sample — so keep real content out of it. The `hasSample` flag lives on the
+metadata so the store can show the right button without downloading every
+sample just to find out which exist.
+
+Upload one from **Admin → Study Materials → ＋ Sample** on any material. The
+store then shows *View a sample*, which opens `viewer.html?id=<id>&sample=1`.
+
+Without a sample, the store shows *Ask for a sample* instead. That files a
+normal request with `kind: 'sample'` and `sampleOf: <materialId>`, so it lands
+in the same Admin → Requests queue, badged, with a button that jumps straight
+to uploading the sample. The material id is stored as `sampleOf` rather than
+`materialId` because the rules forbid a student setting `materialId` — that
+field is the admin's answer.
+
+## Navigation
+
+Below 1040px the site uses a **bottom tab bar** (Store, Materials, Request,
+Cart, More) rather than a hamburger. A hamburger hides every destination behind
+a gesture people have to already know; the bar puts them on screen the way
+every app on a phone does. "More" opens the drawer for Orders, Admin and sign
+out. Above 1040px the top nav takes over and the bar is hidden.
+
 ## A note on "no download"
 
 The viewer disables right-click and the usual save shortcuts, and PDFs are

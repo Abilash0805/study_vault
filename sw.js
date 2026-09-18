@@ -3,7 +3,7 @@
 //  Network-first with a cache fallback, so a deploy is picked up
 //  immediately but the app still opens on a flaky connection.
 // ═══════════════════════════════════════════════════════════
-const CACHE = 'chapterkit-v10';
+const CACHE = 'chapterkit-v11';
 
 const SHELL = [
   './',

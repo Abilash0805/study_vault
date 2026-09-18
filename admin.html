@@ -339,6 +339,8 @@
 </main>
 
 <!-- ══ ASSIGN MODAL ══ -->
+<input type="file" id="sample-file" accept=".html,.jsx,.tsx,.pdf,text/html,application/pdf" hidden>
+
 <div class="modal-bg" id="assign-modal">
   <div class="modal" role="dialog" aria-modal="true" aria-labelledby="assign-title">
     <h3 id="assign-title">Assign materials</h3>
@@ -365,7 +367,7 @@ import {
   loadPaymentSettings, savePaymentSettings
 } from './assets/js/orders.js';
 import {
-  REQ_STATUS, REQ_META, listAllRequests, setRequestStatus,
+  REQ_STATUS, REQ_META, REQ_KIND, listAllRequests, setRequestStatus,
   fulfilRequest, deleteRequest, byDemand
 } from './assets/js/requests.js';
 import { mountChrome, ready, el, fill, esc, fmtDate, fmtDateTime, fmtMoney, toast, emptyState, setCartCount } from './assets/js/ui.js';
@@ -855,6 +857,58 @@ async function setPublished(id, published) {
   } catch (e) { toast('Error: ' + e.message, 'err'); }
 }
 
+/* ── SAMPLES ──────────────────────────────────────────── */
+let _sampleFor = null;
+const sampleInput = document.getElementById('sample-file');
+
+function pickSample(id, title) {
+  _sampleFor = { id, title };
+  sampleInput.value = '';
+  sampleInput.click();
+}
+
+sampleInput.addEventListener('change', async () => {
+  const file = sampleInput.files[0];
+  if (!file || !_sampleFor) return;
+  const { id, title } = _sampleFor;
+
+  const ext = file.name.toLowerCase().split('.').pop();
+  if (!['html', 'jsx', 'tsx', 'pdf'].includes(ext)) {
+    toast('Samples must be .html, .jsx, .tsx or .pdf', 'err'); return;
+  }
+  const isPdf = ext === 'pdf';
+  if (file.size > (isPdf ? 700 : 900) * 1024) {
+    toast('Sample too large — keep it well under the full material', 'err'); return;
+  }
+
+  toast(`Uploading sample for "${title}"…`);
+  try {
+    const text = await new Promise((resolve, reject) => {
+      const r = new FileReader();
+      r.onload = e => resolve(e.target.result);
+      r.onerror = () => reject(new Error('Could not read the file'));
+      if (isPdf) r.readAsDataURL(file); else r.readAsText(file);
+    });
+
+    const content = isPdf
+      ? { pdfContent: text.slice(text.indexOf(',') + 1), sourceType: 'inline-pdf' }
+      : ext === 'html'
+        ? { htmlContent: text, sourceType: 'inline' }
+        : { jsxContent: text, sourceType: 'inline-jsx' };
+
+    await setDoc(doc(db, 'materialSample', id), { ...content, updatedAt: Date.now() });
+    // hasSample lives on the metadata so the store can show the right
+    // button without downloading every sample to find out.
+    await updateDoc(doc(db, 'materials', id), { hasSample: true });
+    toast('Sample added — anyone signed in can now preview it', 'ok');
+    loadMaterialsList();
+  } catch (e) {
+    toast('Error: ' + e.message, 'err');
+  } finally {
+    _sampleFor = null;
+  }
+});
+
 /* ── PAYMENTS ─────────────────────────────────────────── */
 let _orders = [], _materialsById = {}, _settings = null;
 
@@ -1158,6 +1212,9 @@ function renderRequests() {
     const box = el('div', { class: 'order-review' },
       el('div', { class: 'order-head' },
         el('span', { class: 'badge ' + meta.badge }, meta.label),
+        r.kind === REQ_KIND.SAMPLE
+          ? el('span', { class: 'badge badge-violet' }, '👁 Sample')
+          : null,
         el('span', { style: 'font-weight:500' },
           (r.subject ? r.subject + ' · ' : '') + r.chapter),
         el('span', { class: 'muted small', style: 'margin-left:auto' },
@@ -1172,6 +1229,15 @@ function renderRequests() {
     );
 
     const actions = el('div', { class: 'list-actions', style: 'margin-top:12px' });
+
+    // A sample request is answered by uploading a sample, so send the
+    // admin straight to that material rather than the generic flow.
+    if (r.kind === REQ_KIND.SAMPLE && r.sampleOf) {
+      actions.append(el('button', {
+        class: 'btn btn-primary btn-sm',
+        onclick: () => { switchTab('materials'); setTimeout(() => pickSample(r.sampleOf, r.chapter), 400); }
+      }, '＋ Upload the sample'));
+    }
 
     if (r.status === REQ_STATUS.OPEN) {
       actions.append(

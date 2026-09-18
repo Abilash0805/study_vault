@@ -64,13 +64,14 @@
 
 <script type="module">
 import { requireAuth, doSignOut } from './assets/js/session.js';
-import { readContent, buildViewerDoc, fetchRemoteDoc } from './assets/js/content.js';
+import { readContent, readSample, buildViewerDoc, fetchRemoteDoc } from './assets/js/content.js';
 import { withNavGuard } from './assets/js/render.js';
 import { db, doc, getDoc } from './assets/js/firebase.js';
 import { ready, esc, el, fill, toast } from './assets/js/ui.js';
 
 const params = new URLSearchParams(location.search);
 const matId  = params.get('id');
+const isSample = params.get('sample') === '1';
 
 const frame    = document.getElementById('frame');
 const titleEl  = document.getElementById('title');
@@ -152,15 +153,20 @@ if (!matId) {
     // Title comes from the (readable) metadata doc.
     const metaSnap = await getDoc(doc(db, 'materials', matId));
     const title = metaSnap.exists() ? (metaSnap.data().title || 'Untitled') : 'Material';
-    titleEl.textContent = title;
-    document.title = title + ' — Chapter Kit';
+    titleEl.textContent = isSample ? title + ' — sample' : title;
+    document.title = (isSample ? 'Sample: ' : '') + title + ' — Chapter Kit';
+    if (isSample) {
+      const badge = document.getElementById('secure-badge');
+      badge.textContent = '👁 Free sample';
+      badge.className = 'badge badge-amber';
+    }
 
     const spinner = (label) => `<div style="font-family:sans-serif;display:flex;
       align-items:center;justify-content:center;height:100vh;color:#8587a0;
       background:#f6f7fb;">${label}</div>`;
     frame.srcdoc = spinner('Loading content…');
 
-    const data = await readContent(matId);
+    const data = isSample ? await readSample(matId) : await readContent(matId);
     let html = buildViewerDoc(data);
 
     // A remote HTML/JSX URL needs an async fetch from the host page.
