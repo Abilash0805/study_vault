@@ -99,6 +99,12 @@ export async function createRequest({ email, name, subject, chapter, details }) 
  * keeping it out of the rules avoids a republish for a free trial.
  */
 export async function createFreeSampleRequest({ email, name, note }) {
+  // The rules cap details at 1000 chars. Checking here turns a bare
+  // permission-denied into a sentence the student can act on.
+  if ((note || '').length > LIMITS.details) {
+    throw new Error(`Keep the note under ${LIMITS.details} characters.`);
+  }
+
   const existing = await findMySampleRequest(email);
   if (existing) {
     throw new Error(existing.status === REQ_STATUS.FULFILLED
