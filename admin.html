@@ -361,7 +361,7 @@ import {
 } from './assets/js/firebase.js';
 import { FIREBASE_CONFIG } from './assets/js/config.js';
 import { makeCover } from './assets/js/images.js';
-import { listFolders, listMaterials, inferKind, CONTENT_FIELDS, hasInlineContent, DESCRIPTION_LIMIT } from './assets/js/content.js';
+import { listFolders, listMaterials, inferKind, CONTENT_FIELDS, hasInlineContent } from './assets/js/content.js';
 import {
   STATUS, STATUS_META, listAllOrders, listLedger, ledgerTotal, auditOrder,
   confirmPayment, rejectOrder, refundOrder, expireOrder, isExpired,
@@ -820,14 +820,14 @@ async function loadMaterialsList() {
         }, ...folderOptions(foldersCache, m.folderId || '', null)),
         el('button', {
           class: 'btn btn-secondary btn-sm',
+          title: 'Change the subject students filter the store by',
+          onclick: () => editSubject(d.id, m.title, m.tag || '')
+        }, '🏷 Subject'),
+        el('button', {
+          class: 'btn btn-secondary btn-sm',
           title: m.hasCover ? 'Replace the store picture' : 'Upload a 16:9 store picture',
           onclick: () => pickCover(d.id, m.title)
         }, m.hasCover ? '🖼 Cover ✓' : '🖼 Cover'),
-        el('button', {
-          class: 'btn btn-secondary btn-sm',
-          title: 'The blurb shown on this material\u2019s preview page',
-          onclick: () => editDescription(d.id, m.title, m.description || '')
-        }, m.description ? '📝 Details ✓' : '📝 Details'),
         el('button', { class: 'btn btn-danger btn-sm', onclick: () => deleteMaterial(d.id, m.title) }, 'Delete')
       )
     ));
@@ -862,23 +862,37 @@ async function setPrice(id, rupees) {
 }
 
 /**
- * The blurb on a material's preview page.
- *
- * Capped because the store downloads every material's metadata on
- * load — a long description is weight on the one page that lists
- * everything, for the sake of a page that reads one document.
+ * The subject is the chip students filter the store by, so a typo in
+ * it is visible on every tile that carries it. Renaming one offers to
+ * rename the rest, because "Physcis" is never wrong in only one place.
  */
-async function editDescription(id, title, current) {
+async function editSubject(id, title, current) {
+  const was = current.trim();
   const next = prompt(
-    `Store description for "${title}".\n\n` +
-    'One short paragraph: what it covers and who it is for. ' +
-    `Blank removes it. (${DESCRIPTION_LIMIT} characters max)`, current);
+    `Subject for "${title}".\n\n` +
+    'This is the filter chip students see in the store. ' +
+    'Leave it blank to file it under General.', was);
   if (next === null) return;
 
-  const description = next.trim().slice(0, DESCRIPTION_LIMIT);
+  const tag = next.trim();
+  if (tag === was) return;
+
   try {
-    await updateDoc(doc(db, 'materials', id), { description });
-    toast(description ? 'Description saved' : 'Description removed', 'ok');
+    const snap = await getDocs(collection(db, 'materials'));
+    const sharers = was
+      ? snap.docs.filter(d => d.id !== id && (d.data().tag || '').trim() === was)
+      : [];
+
+    const also = (sharers.length && confirm(
+      `${sharers.length} other material(s) are also under "${was}".\n\n` +
+      `OK \u2014 rename those to "${tag || 'General'}" as well.\n` +
+      `Cancel \u2014 change only "${title}".`)) ? sharers : [];
+
+    await Promise.all([
+      updateDoc(doc(db, 'materials', id), { tag }),
+      ...also.map(d => updateDoc(doc(db, 'materials', d.id), { tag }))
+    ]);
+    toast(also.length ? `Subject renamed on ${also.length + 1} materials` : 'Subject updated', 'ok');
     loadMaterialsList();
   } catch (e) { toast('Error: ' + e.message, 'err'); }
 }
@@ -910,14 +924,14 @@ coverInput.addEventListener('change', async () => {
     // Whatever shape was picked, it is centre-cropped to 16:9 and
     // downscaled here — a phone photo would otherwise be several MB
     // and the wrong aspect ratio on the tile.
-    const { dataUrl, bytes } = await makeCover(file);
+    const { dataUrl, bytes, width, height } = await makeCover(file);
 
     await setDoc(doc(db, 'materialCover', id), { dataUrl, updatedAt: Date.now() });
     // hasCover lives on the metadata so the store knows which tiles to
     // fetch a picture for, without reading every cover to find out.
     await updateDoc(doc(db, 'materials', id), { hasCover: true });
 
-    toast(`Cover set (${Math.round(bytes / 1024)} KB)`, 'ok');
+    toast(`Cover set — ${width}\u00d7${height}, ${Math.round(bytes / 1024)} KB`, 'ok');
     loadMaterialsList();
   } catch (e) {
     toast(e.message || 'Could not use that image', 'err');

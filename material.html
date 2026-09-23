@@ -135,11 +135,6 @@ function renderMaterial(m, isOwned) {
         m.published === false ? el('span', { class: 'badge badge-amber' }, 'Not listed') : null,
         m.createdAt ? el('span', { class: 'badge badge-grey' }, 'Added ' + fmtDate(m.createdAt)) : null)),
 
-    m.description
-      ? el('p', { class: 'preview-desc' }, m.description)
-      : el('p', { class: 'preview-desc muted' },
-          'No description has been added for this one yet.'),
-
     actions(m, isOwned),
     whatYouGet(m)
   );

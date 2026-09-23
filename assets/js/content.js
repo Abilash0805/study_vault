@@ -34,14 +34,9 @@ export function toMeta(id, m) {
     pricePaise: Number.isFinite(m.pricePaise) ? m.pricePaise : null,
     published: m.published !== false,
     hasCover: m.hasCover === true,
-    description: (m.description || '').trim(),
     kind: m.kind || inferKind(m)
   };
 }
-
-/** Longest blurb the preview page will store. Kept short on purpose:
- *  the store downloads every material's metadata on load. */
-export const DESCRIPTION_LIMIT = 500;
 
 /** One material's metadata, for the preview page. Null if it's gone. */
 export async function readMaterial(id) {

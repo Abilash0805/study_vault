@@ -10,7 +10,7 @@ server to run.
 |---|---|---|
 | `index.html` | public | Landing page + Google sign-in. Signed-in users are redirected on. |
 | `store.html` | signed in | Catalogue of materials on sale, with subject filters and search. |
-| `material.html?id=<id>` | signed in | Preview page for one material — cover, description, price. |
+| `material.html?id=<id>` | signed in | Preview page for one material — cover, subject, price. |
 | `cart.html` | signed in | Cart contents and order total. |
 | `checkout.html` | signed in | Places the order, shows the UPI QR / link, takes the payment reference. |
 | `orders.html` | signed in | The student's own orders and payment status. |
@@ -28,7 +28,7 @@ Shared code lives in `assets/js/` (`config`, `firebase`, `ui`, `session`,
 students/{email}        { email, name, files: [materialId], addedAt }
 folders/{id}            { name, parentId, createdAt }
 materials/{id}          { title, tag, folderId, kind, createdAt,
-                          pricePaise, published, description }         ← metadata
+                          pricePaise, published }                      ← metadata
 materialContent/{id}    { htmlContent | jsxContent | pdfContent | url } ← the bytes
 ```
 
@@ -70,6 +70,16 @@ from Firestore, because the `files[]` filter was only applied in the browser.
 If you change `ADMIN_EMAIL` in `assets/js/config.js`, change `adminEmail()` in
 `firestore.rules` too. The client constant grants nothing on its own — every
 privileged read and write is checked server-side.
+
+## Subjects
+
+A material's `tag` is the subject, and the store builds its filter chips from
+whatever tags exist — there is no separate list of subjects to keep in step.
+
+Edit one from **Admin → Study Materials → 🏷 Subject**. If other materials
+share the old subject, it offers to rename those too, because a misspelt
+subject is never wrong in only one place. Declining changes just that one.
+Blank files a material under *General*.
 
 ## Adding materials
 
@@ -278,23 +288,17 @@ out. Above 1040px the top nav takes over and the bar is hidden.
 ## The preview page
 
 Tapping a store tile's picture opens `material.html?id=<id>`: the cover at
-full width, the title, subject and format, the description, the price and an
-add-to-cart button. It is a product page, not a content preview — the bytes
-stay behind the same `hasAccess()` gate as everywhere else, and the question
-"is this teacher any good?" is answered by the free sample instead.
+full width, the title, subject and format, the price and an add-to-cart
+button. It is a product page, not a content preview — the bytes stay behind
+the same `hasAccess()` gate as everywhere else, and the question "is this
+teacher any good?" is answered by the free sample instead.
 
 **The buy button sits outside the link.** The picture and title are one
 anchor; the footer buttons are siblings of it. Nesting a button inside a link
 means every tap on "Add to cart" also navigates.
 
-Descriptions are set from **Admin → Study Materials → 📝 Details** and capped
-at 500 characters (`DESCRIPTION_LIMIT`). They live on `materials/{id}` rather
-than in their own collection, unlike covers: the store already downloads all
-of that metadata, and a sentence costs nothing next to a picture. That cap is
-what keeps it true.
-
-No rules change is needed for any of this — the page reads `materials/{id}`
-and `materialCover/{id}`, both already readable by any signed-in user.
+No rules change is needed — the page reads `materials/{id}` and
+`materialCover/{id}`, both already readable by any signed-in user.
 
 ## Store cover images
 
@@ -302,14 +306,30 @@ Each material can carry a 16:9 picture shown on its store tile. Clicking it
 opens the preview page above.
 
 ```
-materialCover/{id}      { dataUrl }          ← a 640x360 JPEG
+materialCover/{id}      { dataUrl }          ← a 1280x720 WebP (or JPEG)
 materials/{id}.hasCover true when one exists
 ```
 
 Upload from **Admin → Study Materials → 🖼 Cover**. Whatever is picked is
-**centre-cropped to 16:9 and downscaled to 640x360 JPEG in the browser** before
-it is stored, stepping the quality down until it fits under 150 KB — a phone
-photo is several MB and the wrong shape, and neither should reach Firestore.
+**centre-cropped to 16:9 and downscaled to 1280x720 in the browser** before it
+is stored, stepping the quality down until it fits under 280 KB — a phone photo
+is several MB and the wrong shape, and neither should reach Firestore.
+
+**Why 1280x720 and not 640x360.** A store tile is small, but the preview page
+shows the same picture across the full width of the page, and a phone at 3x
+device pixels wants well over a thousand real pixels for that. At 640 the
+browser was upscaling 2x, which is what "blurry" looks like.
+
+**WebP where the browser can write it, JPEG everywhere else.** WebP is roughly
+a third smaller at the same visible quality, which is what pays for four times
+the pixels without covers getting heavier to download. `toDataURL` quietly
+returns a PNG when it cannot encode the format asked for, so the result is
+checked rather than assumed.
+
+Downscaling happens **in halving steps**. A single `drawImage` from a 4000px
+photo straight down to 1280 samples the source too sparsely and the result
+crawls with aliasing — worst on a photographed page of text, which is exactly
+what gets uploaded here.
 
 **Covers are deliberately not on `materials/{id}`.** The store lists every
 material's metadata on load, so a cover there would download every picture on
