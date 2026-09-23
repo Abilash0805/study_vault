@@ -1,0 +1,178 @@
+<!DOCTYPE html>
+<html lang="en" class="booting">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Preview — Chapter Kit</title>
+<!-- Sign-in required, so a crawler only ever reaches the loading state.
+     Indexing that adds a thin page rather than traffic. -->
+<meta name="robots" content="noindex">
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6d5ef9">
+<meta name="apple-mobile-web-app-capable" content="yes">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+
+<div id="boot"><div class="spinner"></div><span class="boot-text">Loading…</span></div>
+
+<div id="site-header"></div>
+
+<main class="page page-narrow">
+  <a class="back-link" href="store.html">← Back to the store</a>
+  <div id="content">
+    <div class="empty"><span class="empty-ico">⏳</span><strong>Loading…</strong></div>
+  </div>
+</main>
+
+<script type="module">
+import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
+import { readMaterial, readCover, kindIcon, kindLabel } from './assets/js/content.js';
+import { mountChrome, ready, el, fill, fmtMoney, fmtDate, emptyState, toast,
+         setCartCount, friendlyError } from './assets/js/ui.js';
+import * as cart from './assets/js/cart.js';
+
+const { user, isAdmin, student } = await requireAuth();
+mountChrome({ active: 'store', user, isAdmin, onSignOut: () => doSignOut() });
+
+cart.onChange(setCartCount);
+
+const contentEl = document.getElementById('content');
+const id = new URLSearchParams(location.search).get('id') || '';
+
+/**
+ * The 16:9 hero. Same shape as the store tile so the picture the
+ * student tapped is the picture they land on, rather than the page
+ * reflowing under them once the image arrives.
+ */
+function hero(m) {
+  const box = el('div', { class: 'preview-cover' },
+    el('span', { class: 'tile-cover-ico', 'aria-hidden': 'true' }, kindIcon(m.kind, m.id)));
+
+  if (m.hasCover) {
+    readCover(m.id).then(url => {
+      if (!url) return;
+      const img = el('img', { src: url, alt: '', decoding: 'async' });
+      img.addEventListener('load', () => box.classList.add('has-img'));
+      box.replaceChildren(img);
+    }).catch(() => {});      // a missing cover is cosmetic
+  }
+  return box;
+}
+
+/** What buying actually gets you. Plain facts, not a sales pitch. */
+function whatYouGet(m) {
+  const points = [
+    ['📚', 'Added to My Materials as soon as your payment is confirmed.'],
+    ['📱', 'Read it online on a phone or a laptop — nothing to install.'],
+    ['♾️', 'It stays in your library. No expiry, no re-purchase.']
+  ];
+  return el('div', { class: 'card' },
+    el('h2', {}, 'What you get'),
+    el('ul', { class: 'plain-list' },
+      ...points.map(([ico, text]) => el('li', {},
+        el('span', { class: 'plain-list-ico', 'aria-hidden': 'true' }, ico),
+        el('span', {}, text))))
+  );
+}
+
+function actions(m, isOwned) {
+  const foot = el('div', { class: 'preview-buy' });
+
+  if (isOwned) {
+    foot.append(
+      el('span', { class: 'owned-note' }, '✓ In your library'),
+      el('a', { class: 'btn btn-primary',
+                href: `viewer.html?id=${encodeURIComponent(m.id)}` }, 'Open it'));
+    return foot;
+  }
+
+  if (!m.published || m.pricePaise === null) {
+    foot.append(el('span', { class: 'muted small' },
+      'This one isn’t on sale right now.'));
+    return foot;
+  }
+
+  const free = !m.pricePaise;
+  const btn = el('button', { class: 'btn btn-primary' });
+  const paint = () => {
+    const inCart = cart.has(m.id);
+    btn.textContent = inCart ? 'In cart ✓ — remove' : 'Add to cart';
+    btn.className = 'btn ' + (inCart ? 'btn-secondary' : 'btn-primary');
+  };
+  btn.addEventListener('click', () => {
+    const nowIn = cart.toggle(m.id);
+    toast(nowIn ? 'Added to cart' : 'Removed from cart', nowIn ? 'ok' : '');
+    paint();
+  });
+  paint();
+
+  foot.append(
+    el('span', { class: 'preview-price' + (free ? ' price-free' : '') },
+      free ? 'Free' : fmtMoney(m.pricePaise)),
+    btn,
+    el('a', { class: 'btn btn-secondary', href: 'cart.html' }, 'Go to cart'));
+  return foot;
+}
+
+function renderMaterial(m, isOwned) {
+  document.title = `${m.title} — Chapter Kit`;
+
+  fill(contentEl,
+    hero(m),
+    el('div', { class: 'preview-head' },
+      el('h1', {}, m.title),
+      el('div', { class: 'preview-badges' },
+        el('span', { class: 'badge badge-violet' }, m.tag || 'General'),
+        el('span', { class: 'badge badge-grey' }, kindLabel(m.kind)),
+        m.published === false ? el('span', { class: 'badge badge-amber' }, 'Not listed') : null,
+        m.createdAt ? el('span', { class: 'badge badge-grey' }, 'Added ' + fmtDate(m.createdAt)) : null)),
+
+    m.description
+      ? el('p', { class: 'preview-desc' }, m.description)
+      : el('p', { class: 'preview-desc muted' },
+          'No description has been added for this one yet.'),
+
+    actions(m, isOwned),
+    whatYouGet(m)
+  );
+}
+
+try {
+  if (!id) {
+    fill(contentEl, emptyState('🔗', 'No material chosen',
+      'Open a material from the store to see its preview.'));
+  } else {
+    const m = await readMaterial(id);
+    if (!m) {
+      fill(contentEl, emptyState('🔍', 'Material not found',
+        'It may have been removed. Try the store for what is available now.'));
+    } else {
+      // grantedIds() returns null for the admin, who can open anything.
+      const owned = grantedIds(isAdmin, student);
+      renderMaterial(m, isAdmin || owned.has(m.id));
+    }
+  }
+} catch (e) {
+  console.error('preview:', e);
+  fill(contentEl, emptyState('⚠️', 'Could not load this material',
+    friendlyError(e, { isAdmin })));
+} finally {
+  ready();
+}
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>

@@ -34,8 +34,27 @@ export function toMeta(id, m) {
     pricePaise: Number.isFinite(m.pricePaise) ? m.pricePaise : null,
     published: m.published !== false,
     hasCover: m.hasCover === true,
+    description: (m.description || '').trim(),
     kind: m.kind || inferKind(m)
   };
+}
+
+/** Longest blurb the preview page will store. Kept short on purpose:
+ *  the store downloads every material's metadata on load. */
+export const DESCRIPTION_LIMIT = 500;
+
+/** One material's metadata, for the preview page. Null if it's gone. */
+export async function readMaterial(id) {
+  const snap = await getDoc(doc(db, 'materials', id));
+  return snap.exists() ? toMeta(id, snap.data()) : null;
+}
+
+/** Human name for a content type, for the preview page's format badge. */
+export function kindLabel(kind) {
+  if (kind === 'pdf') return 'PDF';
+  if (kind === 'jsx') return 'Interactive';
+  if (kind === 'html' || kind === 'url') return 'Web page';
+  return 'Document';
 }
 
 /** Best-effort content type, for icons and badges. */

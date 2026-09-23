@@ -9,6 +9,7 @@ Disallow: /admin.html
 Disallow: /library.html
 Disallow: /viewer.html
 Disallow: /store.html
+Disallow: /material.html
 Disallow: /cart.html
 Disallow: /checkout.html
 Disallow: /orders.html

@@ -100,14 +100,28 @@ function showMessage(icon, heading, detail) {
  * nested copy of the viewer — the material vanishes. A blob URL is a
  * real document address, so anchors and history work the way the
  * material's author expects.
+ *
+ * The frame is navigated with location.replace(), never by assigning
+ * .src or .srcdoc. Assigning either to an iframe that has already
+ * loaded a document pushes a session-history entry, so the viewer
+ * occupied two and leaving it took two presses of Back. Replacing the
+ * frame's current entry keeps the whole page at exactly one, however
+ * many times the frame is repainted on the way (spinner → content).
  */
 let _blobUrl = null;
-function showDoc(html) {
+function showHtml(html) {
   if (_blobUrl) { URL.revokeObjectURL(_blobUrl); _blobUrl = null; }
-  _blobUrl = URL.createObjectURL(new Blob([withNavGuard(html)], { type: 'text/html' }));
+  _blobUrl = URL.createObjectURL(new Blob([html], { type: 'text/html' }));
   frame.removeAttribute('srcdoc');
-  frame.src = _blobUrl;
+  try {
+    frame.contentWindow.location.replace(_blobUrl);
+  } catch (_) {
+    frame.src = _blobUrl;         // no contentWindow yet — rare, costs one entry
+  }
 }
+
+const showDoc = (html) => showHtml(withNavGuard(html));
+
 addEventListener('pagehide', () => { if (_blobUrl) URL.revokeObjectURL(_blobUrl); });
 
 /** A link inside one material can open another as its own page. */
@@ -158,14 +172,14 @@ if (!matId) {
     const spinner = (label) => `<div style="font-family:sans-serif;display:flex;
       align-items:center;justify-content:center;height:100vh;color:#8587a0;
       background:#f6f7fb;">${label}</div>`;
-    frame.srcdoc = spinner('Loading content…');
+    showHtml(spinner('Loading content…'));
 
     const data = await readContent(matId);
     let html = buildViewerDoc(data);
 
     // A remote HTML/JSX URL needs an async fetch from the host page.
     if (html === null && data.url) {
-      frame.srcdoc = spinner('Fetching content…');
+      showHtml(spinner('Fetching content…'));
       html = await fetchRemoteDoc(data.url);
     }
 

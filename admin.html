@@ -361,7 +361,7 @@ import {
 } from './assets/js/firebase.js';
 import { FIREBASE_CONFIG } from './assets/js/config.js';
 import { makeCover } from './assets/js/images.js';
-import { listFolders, listMaterials, inferKind, CONTENT_FIELDS, hasInlineContent } from './assets/js/content.js';
+import { listFolders, listMaterials, inferKind, CONTENT_FIELDS, hasInlineContent, DESCRIPTION_LIMIT } from './assets/js/content.js';
 import {
   STATUS, STATUS_META, listAllOrders, listLedger, ledgerTotal, auditOrder,
   confirmPayment, rejectOrder, refundOrder, expireOrder, isExpired,
@@ -823,6 +823,11 @@ async function loadMaterialsList() {
           title: m.hasCover ? 'Replace the store picture' : 'Upload a 16:9 store picture',
           onclick: () => pickCover(d.id, m.title)
         }, m.hasCover ? '🖼 Cover ✓' : '🖼 Cover'),
+        el('button', {
+          class: 'btn btn-secondary btn-sm',
+          title: 'The blurb shown on this material\u2019s preview page',
+          onclick: () => editDescription(d.id, m.title, m.description || '')
+        }, m.description ? '📝 Details ✓' : '📝 Details'),
         el('button', { class: 'btn btn-danger btn-sm', onclick: () => deleteMaterial(d.id, m.title) }, 'Delete')
       )
     ));
@@ -852,6 +857,28 @@ async function setPrice(id, rupees) {
   try {
     await updateDoc(doc(db, 'materials', id), { pricePaise });
     toast(pricePaise === null ? 'Removed from sale' : 'Price updated', 'ok');
+    loadMaterialsList();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
+}
+
+/**
+ * The blurb on a material's preview page.
+ *
+ * Capped because the store downloads every material's metadata on
+ * load — a long description is weight on the one page that lists
+ * everything, for the sake of a page that reads one document.
+ */
+async function editDescription(id, title, current) {
+  const next = prompt(
+    `Store description for "${title}".\n\n` +
+    'One short paragraph: what it covers and who it is for. ' +
+    `Blank removes it. (${DESCRIPTION_LIMIT} characters max)`, current);
+  if (next === null) return;
+
+  const description = next.trim().slice(0, DESCRIPTION_LIMIT);
+  try {
+    await updateDoc(doc(db, 'materials', id), { description });
+    toast(description ? 'Description saved' : 'Description removed', 'ok');
     loadMaterialsList();
   } catch (e) { toast('Error: ' + e.message, 'err'); }
 }

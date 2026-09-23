@@ -94,6 +94,10 @@ export async function createRequest({ email, name, subject, chapter, details }) 
  * teaching once before paying for anything, so it is a single ask
  * tied to the person rather than a catalogue of previews.
  *
+ * Once means once, whatever became of the first ask — withdrawing
+ * or being declined does not hand out a fresh one, or the limit is
+ * just a speed bump anyone can walk around.
+ *
  * The limit is enforced here and shown in the UI, not in the rules.
  * A second ask costs nothing but the admin's time to decline, and
  * keeping it out of the rules avoids a republish for a free trial.
@@ -106,11 +110,7 @@ export async function createFreeSampleRequest({ email, name, note }) {
   }
 
   const existing = await findMySampleRequest(email);
-  if (existing) {
-    throw new Error(existing.status === REQ_STATUS.FULFILLED
-      ? 'You have already had your free sample.'
-      : 'Your sample request is already with your instructor.');
-  }
+  if (existing) throw new Error(SAMPLE_USED_MSG[existing.status] || SAMPLE_USED_MSG.default);
 
   const ref = await addDoc(collection(db, 'requests'), {
     email: email.toLowerCase(),
@@ -126,11 +126,23 @@ export async function createFreeSampleRequest({ email, name, note }) {
   return ref.id;
 }
 
-/** The one sample request this person has, if any. */
+const SAMPLE_USED_MSG = {
+  [REQ_STATUS.FULFILLED]: 'You have already had your free sample.',
+  [REQ_STATUS.DECLINED]:  'Your free sample request was already answered.',
+  [REQ_STATUS.WITHDRAWN]: 'You have already used your one free sample request.',
+  default: 'Your sample request is already with your instructor.'
+};
+
+/**
+ * The sample request this person has made, whatever became of it.
+ *
+ * Deliberately not filtered by status: the free sample is one per
+ * person for good, so a withdrawn or declined one still counts as
+ * having asked.
+ */
 export async function findMySampleRequest(email) {
-  const mine = await listMyRequests(email);
-  return mine.find(r => r.kind === REQ_KIND.SAMPLE &&
-    r.status !== REQ_STATUS.WITHDRAWN && r.status !== REQ_STATUS.DECLINED) || null;
+  const mine = await listMyRequests(email);       // newest first
+  return mine.find(r => r.kind === REQ_KIND.SAMPLE) || null;
 }
 
 /** The student's only write after creating: walking it back. */

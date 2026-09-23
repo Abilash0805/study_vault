@@ -10,6 +10,7 @@ server to run.
 |---|---|---|
 | `index.html` | public | Landing page + Google sign-in. Signed-in users are redirected on. |
 | `store.html` | signed in | Catalogue of materials on sale, with subject filters and search. |
+| `material.html?id=<id>` | signed in | Preview page for one material — cover, description, price. |
 | `cart.html` | signed in | Cart contents and order total. |
 | `checkout.html` | signed in | Places the order, shows the UPI QR / link, takes the payment reference. |
 | `orders.html` | signed in | The student's own orders and payment status. |
@@ -27,7 +28,7 @@ Shared code lives in `assets/js/` (`config`, `firebase`, `ui`, `session`,
 students/{email}        { email, name, files: [materialId], addedAt }
 folders/{id}            { name, parentId, createdAt }
 materials/{id}          { title, tag, folderId, kind, createdAt,
-                          pricePaise, published }                      ← metadata
+                          pricePaise, published, description }         ← metadata
 materialContent/{id}    { htmlContent | jsxContent | pdfContent | url } ← the bytes
 ```
 
@@ -188,6 +189,13 @@ A small guard script is injected into every material to handle the rest:
 | `viewer.html?id=<id>` | Same — treated as a jump to that material |
 | `chapter2.html` | Blocked, with a note saying it isn't part of this material |
 
+**The frame is navigated with `location.replace()`**, never by assigning
+`.src` or `.srcdoc`. Assigning either to an iframe that has already loaded a
+document pushes a session-history entry, so the viewer occupied two of them
+and leaving it took two presses of Back. Replacing the frame's current entry
+keeps the page at one however many times the frame is repainted on the way —
+spinner, then "fetching…", then the material.
+
 **To link one material to another**, use the material's Firestore document id:
 
 ```html
@@ -233,6 +241,21 @@ The offer is a single banner at the top of the store:
 | Never asked | "New here? Try before you buy" + **Ask for a free sample** |
 | Asked | "Your free sample is on its way" — no way to ask again |
 | Sent | "Your free sample is ready" + a link straight to the material |
+| Withdrawn or declined | Nothing. The one ask is spent. |
+| Owns any material | Nothing — see below. |
+
+**Who it is shown to.** Only people holding nothing. Once someone owns a
+material — bought or assigned by you — the pitch has done its job, and the
+banner steps aside rather than sitting at the top of the store forever.
+
+The one exception is the material that *was* the sample: it lands in the
+student's library the moment you send it, so counting it would hide the
+"your sample is ready" message at exactly the moment it became true.
+`hasMaterialsOfTheirOwn()` in `store.html` excludes it for that reason.
+
+**Withdrawing does not buy another go.** `findMySampleRequest()` is
+deliberately not filtered by status — if a withdrawn or declined ask handed
+out a fresh one, the limit would be a speed bump anyone could walk around.
 
 Asking files a normal request with `kind: 'sample'` and `chapter: 'Free sample'`,
 so it lands in the same **Admin → Requests** queue. Answer it with **🎁 Send a
@@ -252,9 +275,31 @@ a gesture people have to already know; the bar puts them on screen the way
 every app on a phone does. "More" opens the drawer for Orders, Admin and sign
 out. Above 1040px the top nav takes over and the bar is hidden.
 
+## The preview page
+
+Tapping a store tile's picture opens `material.html?id=<id>`: the cover at
+full width, the title, subject and format, the description, the price and an
+add-to-cart button. It is a product page, not a content preview — the bytes
+stay behind the same `hasAccess()` gate as everywhere else, and the question
+"is this teacher any good?" is answered by the free sample instead.
+
+**The buy button sits outside the link.** The picture and title are one
+anchor; the footer buttons are siblings of it. Nesting a button inside a link
+means every tap on "Add to cart" also navigates.
+
+Descriptions are set from **Admin → Study Materials → 📝 Details** and capped
+at 500 characters (`DESCRIPTION_LIMIT`). They live on `materials/{id}` rather
+than in their own collection, unlike covers: the store already downloads all
+of that metadata, and a sentence costs nothing next to a picture. That cap is
+what keeps it true.
+
+No rules change is needed for any of this — the page reads `materials/{id}`
+and `materialCover/{id}`, both already readable by any signed-in user.
+
 ## Store cover images
 
-Each material can carry a 16:9 picture shown on its store tile.
+Each material can carry a 16:9 picture shown on its store tile. Clicking it
+opens the preview page above.
 
 ```
 materialCover/{id}      { dataUrl }          ← a 640x360 JPEG

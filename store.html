@@ -119,16 +119,23 @@ function tile(m) {
   const inCart  = cart.has(m.id);
   const free    = !m.pricePaise;
 
+  const previewHref = `material.html?id=${encodeURIComponent(m.id)}`;
+
   // Every tile gets a 16:9 box whether or not a picture exists, so the
   // grid stays level and adding a cover later doesn't reflow the page.
   const cover = el('div', { class: 'tile-cover' },
     el('span', { class: 'tile-cover-ico', 'aria-hidden': 'true' }, kindIcon(m.kind, m.id)));
   if (m.hasCover) coverQueue.observe(cover, m.id);
 
-  const card = el('div', { class: 'tile', style: 'cursor:default' },
-    cover,
-    el('div', { class: 'tile-title' }, m.title),
-    el('div', { class: 'tile-meta' }, m.tag || 'General')
+  // The picture and title are one link to the preview page. The
+  // buttons in the footer stay outside it, so adding to the cart
+  // never navigates away by accident.
+  const card = el('div', { class: 'tile' },
+    el('a', { class: 'tile-link', href: previewHref,
+              'aria-label': `Preview ${m.title}` },
+      cover,
+      el('div', { class: 'tile-title' }, m.title),
+      el('div', { class: 'tile-meta' }, m.tag || 'General'))
   );
 
   const foot = el('div', { class: 'tile-foot' });
@@ -159,17 +166,45 @@ function tile(m) {
 }
 
 /**
- * One free sample per person, not per material.
+ * Everything the student already holds that did NOT come from the
+ * free sample. The sample itself lands in their library, so counting
+ * it would hide the "your sample is ready" message the moment it
+ * became true.
+ */
+function hasMaterialsOfTheirOwn(req) {
+  const sampleId = req && req.materialId;
+  if (!sampleId) return owned.size > 0;
+  for (const id of owned) if (id !== sampleId) return true;
+  return false;
+}
+
+/**
+ * One free sample per person, not per material, and only once ever.
  *
  * A new student's real question is "is this teacher any good?", which
  * one sample answers. Offering a preview on every tile asked them to
  * decide fifteen times and gave the instructor fifteen jobs.
+ *
+ * The banner is for people who have nothing yet. Once someone owns a
+ * material — bought or assigned — the pitch has done its job and the
+ * banner disappears rather than sitting at the top of the store for
+ * good. Withdrawn and declined asks stay spent: the whole point of
+ * one-per-person is that there isn't a second one.
  */
 async function renderSampleBanner() {
   const host = document.getElementById('sample-banner');
+  host.hidden = true;
+
   let req = null;
   try { req = await findMySampleRequest(user.email); }
-  catch (e) { host.hidden = true; return; }      // never block the store
+  catch (e) { return; }                          // never block the store
+
+  // Asked and answered — no offer, and nothing left to report.
+  if (req && (req.status === REQ_STATUS.DECLINED ||
+              req.status === REQ_STATUS.WITHDRAWN)) return;
+
+  // Past the trial stage: they already have something to read.
+  if (hasMaterialsOfTheirOwn(req)) return;
 
   host.hidden = false;
 
