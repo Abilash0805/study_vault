@@ -295,6 +295,37 @@ is a single uploaded file, so relative paths to other files have nowhere to go.
 
 ## SEO
 
+### Why Google shows "Vercel" as the site name
+
+`chapterkit.vercel.app` is a **subdomain of `vercel.app`**. Google derives the
+site name shown above a result at the **domain** level, so it reads `vercel.app`
+and prints its name — "Vercel". No markup overrides this. `WebSite.name`,
+`og:site_name` and the `@graph` are all present and correct, and they are what
+Google will use the moment the site sits on its own domain.
+
+**A custom domain is the fix, and it is the single highest-impact SEO action
+available.** It also removes the other quiet cost of a free subdomain: links,
+reputation and search history accrue to a hostname that is not yours and cannot
+be moved with you.
+
+### The structural problem
+
+Only `index.html` is indexable. Every other page requires sign-in, so a crawler
+reaching one sees a spinner — which is why they are `noindex` and in
+`robots.txt`, and why `sitemap.xml` lists the home page alone. Submitting a page
+Google can never render adds a thin result, not traffic.
+
+That means **the landing page is the entire indexable site**, so it carries real
+content rather than a hero and a sign-in box: what the materials are, public
+pricing, and an FAQ — all static HTML, because a crawler reaching the page
+signed-out must be able to read it without running the app.
+
+Plan prices appear in two places, the static HTML and `subscriptions.js`.
+`tests/static.mjs` asserts they match, along with the `Offer` schema, so the
+three cannot drift.
+
+
+
 Only the landing page is public; every other page needs a signed-in account, so
 a crawler reaching one sees a loading spinner. Those pages carry
 `<meta name="robots" content="noindex">` and are listed in `robots.txt`, and

@@ -35,7 +35,8 @@
 <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
 <meta name="apple-mobile-web-app-title" content="Chapter Kit">
 <link rel="apple-touch-icon" href="icon-192.png">
-<link rel="icon" type="image/png" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="192x192" href="icon-192.png">
+<link rel="icon" type="image/png" sizes="512x512" href="icon-512.png">
 
 <link rel="preconnect" href="https://fonts.googleapis.com">
 <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
@@ -45,17 +46,113 @@
 <link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
 <link rel="stylesheet" href="assets/css/app.css">
 
+<!-- One linked graph rather than loose blocks, so Google can see that the
+     site, the organisation behind it and the plans it sells are the same
+     thing. "WebSite.name" is Google's documented signal for the site name
+     shown in a result; on a *.vercel.app subdomain Google still falls back
+     to the parent domain's name, which is why a custom domain is the only
+     real fix for that. The markup is correct and ready for one. -->
 <script type="application/ld+json">
 {
   "@context": "https://schema.org",
-  "@type": "EducationalOrganization",
-  "name": "Chapter Kit",
-  "url": "https://chapterkit.vercel.app/",
-  "logo": "https://chapterkit.vercel.app/icon-512.png",
-  "image": "https://chapterkit.vercel.app/og-image.png",
-  "description": "Chapter-wise study notes, worksheets and PDFs, organised by subject and available on any device.",
-  "areaServed": "IN",
-  "inLanguage": "en-IN"
+  "@graph": [
+    {
+      "@type": "WebSite",
+      "@id": "https://chapterkit.vercel.app/#website",
+      "url": "https://chapterkit.vercel.app/",
+      "name": "Chapter Kit",
+      "alternateName": "ChapterKit",
+      "description": "Chapter-wise study notes, worksheets and PDFs, organised by subject.",
+      "publisher": { "@id": "https://chapterkit.vercel.app/#org" },
+      "inLanguage": "en-IN"
+    },
+    {
+      "@type": "EducationalOrganization",
+      "@id": "https://chapterkit.vercel.app/#org",
+      "name": "Chapter Kit",
+      "url": "https://chapterkit.vercel.app/",
+      "logo": {
+        "@type": "ImageObject",
+        "url": "https://chapterkit.vercel.app/icon-512.png",
+        "width": 512, "height": 512
+      },
+      "image": "https://chapterkit.vercel.app/og-image.png",
+      "description": "Chapter-wise study notes, worksheets and PDFs for students in India, organised by subject and readable on any device.",
+      "areaServed": { "@type": "Country", "name": "India" },
+      "inLanguage": "en-IN"
+    },
+    {
+      "@type": "WebPage",
+      "@id": "https://chapterkit.vercel.app/#webpage",
+      "url": "https://chapterkit.vercel.app/",
+      "name": "Chapter Kit — Your study materials, in one place",
+      "isPartOf": { "@id": "https://chapterkit.vercel.app/#website" },
+      "about": { "@id": "https://chapterkit.vercel.app/#org" },
+      "primaryImageOfPage": "https://chapterkit.vercel.app/og-image.png"
+    },
+    {
+      "@type": "Product",
+      "@id": "https://chapterkit.vercel.app/#plans",
+      "name": "Chapter Kit study plan",
+      "description": "Full access to every study material on Chapter Kit, including ones added while the plan is running.",
+      "brand": { "@id": "https://chapterkit.vercel.app/#org" },
+      "offers": [
+        {
+          "@type": "Offer",
+          "name": "Weekly plan",
+          "price": "69.00",
+          "priceCurrency": "INR",
+          "availability": "https://schema.org/InStock",
+          "url": "https://chapterkit.vercel.app/"
+        },
+        {
+          "@type": "Offer",
+          "name": "Monthly plan",
+          "price": "199.00",
+          "priceCurrency": "INR",
+          "availability": "https://schema.org/InStock",
+          "url": "https://chapterkit.vercel.app/"
+        }
+      ]
+    },
+    {
+      "@type": "FAQPage",
+      "@id": "https://chapterkit.vercel.app/#faq",
+      "isPartOf": { "@id": "https://chapterkit.vercel.app/#webpage" },
+      "mainEntity": [
+        {
+          "@type": "Question",
+          "name": "How do I get a study material on Chapter Kit?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Sign in with Google and open the store. You can buy a single chapter outright, or take a weekly or monthly plan that opens every material on the site. Payment is by UPI." }
+        },
+        {
+          "@type": "Question",
+          "name": "What does a plan include?",
+          "acceptedAnswer": { "@type": "Answer", "text": "A plan opens every study material on Chapter Kit, including ones published while the plan is running. The weekly plan is Rs 69 for 7 days and the monthly plan is Rs 199 for 30 days." }
+        },
+        {
+          "@type": "Question",
+          "name": "Do I lose my materials when a plan ends?",
+          "acceptedAnswer": { "@type": "Answer", "text": "No. Any chapter you bought on its own stays in your library for good. Only the plan's extra access stops, and there is no auto-renewal, so nothing is charged again." }
+        },
+        {
+          "@type": "Question",
+          "name": "Can I see a sample before paying?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Yes. Every new student can ask for one free sample from the store, and your instructor sends a material across so you can judge the teaching before buying anything." }
+        },
+        {
+          "@type": "Question",
+          "name": "What can I read the materials on?",
+          "acceptedAnswer": { "@type": "Answer", "text": "Any device with a browser — phone, tablet or laptop. Nothing is downloaded or installed, and Chapter Kit can be added to a phone's home screen so it opens like an app." }
+        },
+        {
+          "@type": "Question",
+          "name": "How do I pay?",
+          "acceptedAnswer": { "@type": "Answer", "text": "By UPI. Checkout shows a QR code and a payment link with the amount and reference already filled in, and access is granted once the payment is confirmed." }
+        }
+      ]
+    }
+  ]
 }
 </script>
 
@@ -141,6 +238,119 @@
       <p class="signin-note">
         We only use your Google account to identify you. No password is stored by Chapter Kit.
       </p>
+    </div>
+  </section>
+
+  <!-- Everything below is static HTML on purpose. Crawlers index the
+       landing page without signing in, and every other page is behind
+       auth, so this is the only content Google can actually read. -->
+
+  <section class="lp" id="inside">
+    <h2>What's inside Chapter Kit</h2>
+    <p class="lp-lead">
+      Chapter-wise study material written for one syllabus at a time — not a
+      dump of PDFs. Each material covers a single chapter end to end, so you
+      can open the one topic you are stuck on instead of scrolling a textbook.
+    </p>
+    <div class="lp-grid">
+      <div class="lp-item">
+        <h3>Chapter notes</h3>
+        <p>The ideas of one chapter explained in order, with the reasoning
+           shown rather than just the result.</p>
+      </div>
+      <div class="lp-item">
+        <h3>Worksheets &amp; solved questions</h3>
+        <p>Practice with worked solutions, including past-paper style
+           questions, so you can check your method and not only your answer.</p>
+      </div>
+      <div class="lp-item">
+        <h3>PDFs and interactive material</h3>
+        <p>Read everything in the browser — PDFs render page by page, and
+           interactive material runs without installing anything.</p>
+      </div>
+      <div class="lp-item">
+        <h3>Organised by subject</h3>
+        <p>Folders by subject and chapter, with search, so a material you
+           opened last month is still where you expect it.</p>
+      </div>
+    </div>
+  </section>
+
+  <section class="lp lp-alt" id="pricing">
+    <h2>Pricing</h2>
+    <p class="lp-lead">
+      Buy a single chapter, or take a plan and open everything. Payment is by
+      UPI. There is no auto-renewal — a plan simply ends.
+    </p>
+    <div class="lp-plans">
+      <div class="plan-card">
+        <h3>Single chapter</h3>
+        <div class="plan-price">Pay per chapter</div>
+        <p class="plan-rate">priced on each material</p>
+        <p class="plan-blurb">Buy just the chapter you need. It stays in your
+           library for good, whatever else changes.</p>
+      </div>
+      <div class="plan-card">
+        <h3>Weekly plan</h3>
+        <div class="plan-price">₹69<span class="plan-per">/ 7 days</span></div>
+        <p class="plan-rate">about ₹9.86 a day</p>
+        <p class="plan-blurb">Everything on the site for a week. Useful the
+           week before an exam.</p>
+      </div>
+      <div class="plan-card is-best">
+        <span class="plan-flag">Better value</span>
+        <h3>Monthly plan</h3>
+        <div class="plan-price">₹199<span class="plan-per">/ 30 days</span></div>
+        <p class="plan-rate">about ₹6.63 a day</p>
+        <p class="plan-blurb">Everything on the site for a month, including
+           materials added while your plan is running.</p>
+      </div>
+    </div>
+    <p class="lp-note">
+      New here? Ask for <strong>one free sample</strong> from the store and see
+      the teaching before you pay for anything.
+    </p>
+  </section>
+
+  <section class="lp" id="faq">
+    <h2>Questions students ask</h2>
+    <div class="faq">
+      <details>
+        <summary>How do I get a study material on Chapter Kit?</summary>
+        <p>Sign in with Google and open the store. You can buy a single chapter
+           outright, or take a weekly or monthly plan that opens every material
+           on the site. Payment is by UPI.</p>
+      </details>
+      <details>
+        <summary>What does a plan include?</summary>
+        <p>A plan opens every study material on Chapter Kit, including ones
+           published while the plan is running. The weekly plan is ₹69 for 7
+           days; the monthly plan is ₹199 for 30 days.</p>
+      </details>
+      <details>
+        <summary>Do I lose my materials when a plan ends?</summary>
+        <p>No. Any chapter you bought on its own stays in your library for good.
+           Only the plan's extra access stops, and there is no auto-renewal, so
+           nothing is charged again.</p>
+      </details>
+      <details>
+        <summary>Can I see a sample before paying?</summary>
+        <p>Yes. Every new student can ask for one free sample from the store,
+           and your instructor sends a material across so you can judge the
+           teaching before buying anything.</p>
+      </details>
+      <details>
+        <summary>What can I read the materials on?</summary>
+        <p>Any device with a browser — phone, tablet or laptop. Nothing is
+           downloaded or installed, and Chapter Kit can be added to a phone's
+           home screen so it opens like an app.</p>
+      </details>
+      <details>
+        <summary>How do I pay?</summary>
+        <p>By UPI. Checkout shows a QR code and a payment link with the amount
+           and reference already filled in, and access is granted once the
+           payment is confirmed.</p>
+      </details>
     </div>
   </section>
 </main>

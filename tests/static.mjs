@@ -97,6 +97,61 @@ for (const f of [...HTML, ...JS]) {
         uncovered.join(', ') || [...used].sort().join(' '));
 }
 
+/* ── 8. the landing page's SEO payload ────────────────── */
+{
+  const html = readFileSync('index.html', 'utf8');
+  const blocks = [...html.matchAll(/<script type="application\/ld\+json">([\s\S]*?)<\/script>/g)];
+  check(blocks.length === 1, 'seo: exactly one JSON-LD block', 'found=' + blocks.length);
+
+  let graph = null;
+  try { graph = JSON.parse(blocks[0][1])['@graph']; } catch (e) { /* reported below */ }
+  check(Array.isArray(graph), 'seo: JSON-LD parses as a @graph');
+
+  const byType = Object.fromEntries((graph || []).map(n => [n['@type'], n]));
+  for (const t of ['WebSite', 'EducationalOrganization', 'WebPage', 'Product', 'FAQPage']) {
+    check(!!byType[t], `seo: @graph has ${t}`);
+  }
+  check(byType.WebSite?.name === 'Chapter Kit',
+        'seo: WebSite.name declares the site name Google shows', String(byType.WebSite?.name));
+  check(byType.WebSite?.publisher?.['@id'] === byType.EducationalOrganization?.['@id'],
+        'seo: the site and the organisation are linked, not two loose blocks');
+
+  // Prices live in the static HTML (crawlers may not run JS) AND in
+  // subscriptions.js. They must not drift.
+  const subs = readFileSync('assets/js/subscriptions.js', 'utf8');
+  const plans = [...subs.matchAll(/pricePaise:\s*(\d+),\s*days:\s*(\d+)/g)]
+    .map(m => ({ rupees: Number(m[1]) / 100, days: Number(m[2]) }));
+  check(plans.length === 2, 'seo: found both plans in subscriptions.js', JSON.stringify(plans));
+
+  for (const pl of plans) {
+    check(html.includes(`₹${pl.rupees}<span class="plan-per">/ ${pl.days} days</span>`),
+          `seo: the landing page shows ₹${pl.rupees} / ${pl.days} days`);
+    const offer = (byType.Product?.offers || []).find(o => Number(o.price) === pl.rupees);
+    check(!!offer && offer.priceCurrency === 'INR',
+          `seo: Offer schema carries ₹${pl.rupees}`, JSON.stringify(offer || null));
+  }
+
+  // every FAQ in the markup is also in the schema, or the rich result lies
+  const summaries = [...html.matchAll(/<summary>([^<]+)<\/summary>/g)].map(m => m[1].trim());
+  const questions = (byType.FAQPage?.mainEntity || []).map(q => q.name.trim());
+  check(summaries.length >= 5, 'seo: the page carries a real FAQ', summaries.length + ' questions');
+  check(summaries.length === questions.length &&
+        summaries.every(q => questions.includes(q)),
+        'seo: every FAQ on the page is in the FAQPage schema',
+        `page=${summaries.length} schema=${questions.length}`);
+
+  // the things a result snippet is built from
+  const title = html.match(/<title>([^<]+)<\/title>/)?.[1] || '';
+  const desc = html.match(/<meta name="description" content="([^"]+)"/)?.[1] || '';
+  check(title.length > 20 && title.length <= 65, 'seo: title fits a result', title.length + ' chars');
+  check(desc.length > 70 && desc.length <= 165, 'seo: description fits a snippet', desc.length + ' chars');
+  check(/rel="icon"[^>]*sizes="192x192"/.test(html), 'seo: a crawlable favicon of a usable size');
+
+  // real headings for a crawler to read
+  check((html.match(/<h2[ >]/g) || []).length >= 3, 'seo: the page has real sections, not just a hero');
+  check(html.includes('<section class="lp" id="faq"'), 'seo: FAQ section present');
+}
+
 for (const [s, n, d] of results) console.log(`${s === 'PASS' ? '  ok  ' : '  FAIL'}  ${n}${d ? '   — ' + d : ''}`);
 const f = results.filter(r => r[0] === 'FAIL').length;
 console.log(`\n${results.length - f}/${results.length} passed`);
