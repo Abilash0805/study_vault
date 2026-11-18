@@ -37,10 +37,11 @@
 
 <script type="module">
 import { requireAuth, doSignOut } from './assets/js/session.js';
-import { PLAN_LIST, isSubActive, subDaysLeft, subLapsed, subUntil, perDayPaise, PLANS }
+import { isSubActive, subDaysLeft, subLapsed, subUntil, PLANS }
   from './assets/js/subscriptions.js';
-import { createSubscriptionOrder, loadPaymentSettings } from './assets/js/orders.js';
-import { mountChrome, ready, el, fill, fmtMoney, fmtDate, toast, setCartCount, friendlyError }
+import { planGrid } from './assets/js/plansui.js';
+import { loadPaymentSettings } from './assets/js/orders.js';
+import { mountChrome, ready, el, fill, fmtDate, setCartCount, friendlyError }
   from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
 
@@ -76,39 +77,6 @@ function statusCard() {
   return null;
 }
 
-function planCard(plan, best) {
-  const buy = el('button', { class: 'btn btn-primary btn-block' },
-    isSubActive(student) ? `Add ${plan.days} more days` : `Choose ${plan.label.toLowerCase()}`);
-
-  buy.addEventListener('click', async () => {
-    buy.disabled = true;
-    buy.textContent = 'Creating order…';
-    try {
-      const order = await createSubscriptionOrder({ email: user.email, planId: plan.id });
-      location.href = `checkout.html?order=${order.id}`;
-    } catch (e) {
-      buy.disabled = false;
-      buy.textContent = `Choose ${plan.label.toLowerCase()}`;
-      toast(e.message || 'Could not start that order', 'err');
-    }
-  });
-
-  const payable = settings?.upiVpa && settings?.enabled !== false;
-
-  return el('div', { class: 'plan-card' + (best ? ' is-best' : '') },
-    best ? el('span', { class: 'plan-flag' }, 'Better value') : null,
-    el('h2', {}, plan.label),
-    el('div', { class: 'plan-price' },
-      fmtMoney(plan.pricePaise),
-      el('span', { class: 'plan-per' }, `/ ${plan.days} days`)),
-    el('p', { class: 'plan-rate' }, `about ${fmtMoney(perDayPaise(plan))} a day`),
-    el('p', { class: 'plan-blurb' }, plan.blurb),
-    payable
-      ? buy
-      : el('p', { class: 'muted small' }, 'UPI payment has not been set up yet.')
-  );
-}
-
 function whatsIncluded() {
   const points = [
     ['📚', 'Every material on the site, the moment you subscribe.'],
@@ -128,12 +96,12 @@ function whatsIncluded() {
 try {
   settings = await loadPaymentSettings();
 
-  const cheapestPerDay = Math.min(...PLAN_LIST.map(perDayPaise));
-
   fill(contentEl,
     statusCard(),
-    el('div', { class: 'plan-grid' },
-      ...PLAN_LIST.map(p => planCard(p, perDayPaise(p) === cheapestPerDay))),
+    planGrid({
+      student, email: user.email,
+      payable: !!(settings?.upiVpa && settings?.enabled !== false)
+    }),
     whatsIncluded(),
     el('p', { class: 'hint', style: 'margin-top:18px' },
       'Payment is by UPI and confirmed by hand, so a plan starts once your ' +

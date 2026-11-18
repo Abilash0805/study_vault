@@ -333,5 +333,102 @@ const awaiting = (d, extra = {}) => {
   await page.close();
 }
 
+/* ═══ 15. The store's offer and popup ═════════════════════
+   Shown to people who have paid nothing; never to a customer. */
+{
+  // never paid -> cards inline, and the popup opens
+  const page = await openPage(browser, { who: 'student', db: fixture() });
+  await page.goto(BASE + 'store.html', { waitUntil: 'networkidle' });
+  await page.waitForSelector('.tile', { timeout: 10000 });
+  await page.waitForTimeout(1500);
+
+  const offerShown = await page.$eval('#plan-offer', e => !e.hidden).catch(() => false);
+  check(offerShown, 'offer: plan cards are in the store');
+  check((await page.$$eval('#plan-offer .plan-card', c => c.length)) === 2,
+        'offer: both plans shown inline');
+  check(/₹69\.00/.test(await page.textContent('#plan-offer')) &&
+        /₹199\.00/.test(await page.textContent('#plan-offer')),
+        'offer: inline prices match the plans page');
+
+  const open = await page.$eval('#plan-modal', e => e.classList.contains('open'));
+  check(open, 'popup: opens for someone who has never paid');
+  check((await page.$$eval('#plan-modal .plan-card', c => c.length)) === 2,
+        'popup: shows both plans');
+
+  await page.click('#plan-modal-close');
+  await page.waitForTimeout(400);
+  check(!(await page.$eval('#plan-modal', e => e.classList.contains('open'))),
+        'popup: closes on "Maybe later"');
+  const stamp = await page.evaluate(() => localStorage.getItem('chapterkit.planpopup.v1'));
+  check(!!stamp, 'popup: the dismissal is remembered', String(stamp).slice(0, 13));
+  check(page.errors.length === 0, 'offer: no JS errors', page.errors.join(' ; '));
+  await page.close();
+}
+
+/* ═══ 16. …and not to anyone who has paid ═════════════════ */
+{
+  // a subscriber
+  const a = await openPage(browser, { who: 'student', db: withSub(fixture(), 9 * DAY) });
+  await a.goto(BASE + 'store.html', { waitUntil: 'networkidle' });
+  await a.waitForTimeout(1600);
+  check(!(await a.$eval('#plan-modal', e => e.classList.contains('open'))),
+        'popup: never shown to a subscriber');
+  check(!(await a.$eval('#plan-offer', e => !e.hidden)), 'offer: hidden from a subscriber');
+  await a.close();
+
+  // someone who bought a single chapter
+  const d = fixture();
+  d.orders['o-done'] = {
+    orderNo: 'CK-260101-DDDD', email: 'student@example.com',
+    items: [{ id: 'm-secret', title: 'Paid Material', pricePaise: 25000 }],
+    totalPaise: 25000, status: 'paid', createdAt: Date.now() - 5000, paidAt: Date.now()
+  };
+  const b = await openPage(browser, { who: 'student', db: d });
+  await b.goto(BASE + 'store.html', { waitUntil: 'networkidle' });
+  await b.waitForTimeout(1600);
+  check(!(await b.$eval('#plan-modal', e => e.classList.contains('open'))),
+        'popup: never shown to someone who bought a chapter');
+  await b.close();
+
+  // the admin
+  const c = await openPage(browser, { who: 'admin', db: fixture() });
+  await c.goto(BASE + 'store.html', { waitUntil: 'networkidle' });
+  await c.waitForTimeout(1600);
+  check(!(await c.$eval('#plan-modal', e => e.classList.contains('open'))),
+        'popup: never shown to the admin');
+  await c.close();
+}
+
+/* ═══ 17. It does not nag on every visit ══════════════════ */
+{
+  const page = await openPage(browser, { who: 'student', db: fixture() });
+  await page.goto(BASE + 'store.html', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1500);
+  await page.click('#plan-modal-close');
+
+  await page.goto(BASE + 'store.html', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1600);
+  check(!(await page.$eval('#plan-modal', e => e.classList.contains('open'))),
+        'popup: stays shut on the next visit');
+  check(await page.$eval('#plan-offer', e => !e.hidden),
+        'popup: but the inline cards are still there');
+  await page.close();
+}
+
+/* ═══ 18. One source of truth for the prices ══════════════ */
+{
+  const page = await openPage(browser, { who: 'student', db: fixture() });
+  await page.goto(BASE + 'plans.html', { waitUntil: 'networkidle' });
+  await page.waitForSelector('.plan-card', { timeout: 10000 });
+  const onPage = await page.$$eval('.plan-card .plan-price', e => e.map(x => x.textContent.trim()));
+  await page.goto(BASE + 'store.html', { waitUntil: 'networkidle' });
+  await page.waitForTimeout(1500);
+  const inStore = await page.$$eval('#plan-offer .plan-price', e => e.map(x => x.textContent.trim()));
+  check(JSON.stringify(onPage) === JSON.stringify(inStore),
+        'prices: the store and the plans page cannot drift apart',
+        onPage.join(' ') + ' vs ' + inStore.join(' '));
+  await page.close();
+}
+
 await browser.close();
 process.exit(report() ? 1 : 0);

@@ -46,6 +46,7 @@
 
   <div id="sample-banner" hidden></div>
   <div id="plan-strip" hidden></div>
+  <div id="plan-offer" hidden></div>
 
   <div class="filters" id="filters"></div>
 
@@ -54,11 +55,25 @@
   </div>
 </main>
 
+<div class="modal-bg" id="plan-modal">
+  <div class="modal" role="dialog" aria-modal="true" aria-labelledby="plan-modal-title">
+    <h3 id="plan-modal-title">Read everything, not one chapter</h3>
+    <p class="modal-sub">A plan opens every material on the site — including the
+       ones added while it is running. You can still buy chapters one at a time.</p>
+    <div class="modal-body" id="plan-modal-body"></div>
+    <div class="modal-foot">
+      <button class="btn btn-ghost" id="plan-modal-close">Maybe later</button>
+    </div>
+  </div>
+</div>
+
 <script type="module">
 import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
 import { listMaterials, kindIcon, readCover } from './assets/js/content.js';
 import { createFreeSampleRequest, findMySampleRequest, REQ_STATUS } from './assets/js/requests.js';
 import { isSubActive, subDaysLeft, subLapsed, PLANS } from './assets/js/subscriptions.js';
+import { planGrid } from './assets/js/plansui.js';
+import { listMyOrders, STATUS, loadPaymentSettings } from './assets/js/orders.js';
 import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount, friendlyError } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
 
@@ -113,6 +128,7 @@ const coverQueue = (() => {
 
 let forSale = [];
 let owned = new Set();
+let payable = false;
 const subscribed = isSubActive(student);
 /** What they hold in their own right — a lapsed plan never touches this. */
 const ownedOutright = new Set(student?.files || []);
@@ -307,6 +323,81 @@ function renderPlanStrip() {
       lapsed ? 'Start again' : 'See plans')));
 }
 
+/**
+ * Has this person ever actually paid?
+ *
+ * Not "do they hold any materials": an instructor assignment and a
+ * free sample both land in files[], and neither is a customer. Only
+ * a paid order is, which is the line the popup is not supposed to
+ * cross. An active plan counts even without one, since the admin can
+ * grant a plan by hand.
+ */
+async function hasEverPaid() {
+  if (subscribed) return true;
+  try {
+    const mine = await listMyOrders(user.email);
+    return mine.some(o => o.status === STATUS.PAID);
+  } catch (e) {
+    // Reading orders is not worth blocking the store for — but a
+    // failure here must not turn into nagging a paying customer.
+    console.debug('orders:', e?.code || e?.message);
+    return true;
+  }
+}
+
+/** The plans, inline in the store, for someone who has not paid. */
+function renderPlanOffer() {
+  const host = document.getElementById('plan-offer');
+  host.hidden = false;
+  fill(host,
+    el('div', { class: 'plan-offer-head' },
+      el('strong', {}, 'Or open everything at once'),
+      el('a', { class: 'plan-offer-more', href: 'plans.html' }, 'What is included →')),
+    planGrid({ student, email: user.email, payable, compact: true }));
+}
+
+/**
+ * The same offer, once, as a popup.
+ *
+ * Shown on arrival to people who have never paid, and then not
+ * again for a week. A modal on every single visit is how a site
+ * teaches people to close it without reading it, so the dismissal
+ * is remembered — per device, which is all localStorage can honestly
+ * promise, and the right scope for something this small.
+ */
+const POPUP_KEY = 'chapterkit.planpopup.v1';
+const POPUP_QUIET_MS = 7 * 24 * 60 * 60 * 1000;
+
+function popupDue() {
+  try {
+    const last = Number(localStorage.getItem(POPUP_KEY) || 0);
+    return !(last && Date.now() - last < POPUP_QUIET_MS);
+  } catch (_) {
+    return true;                       // private window — show it, once
+  }
+}
+
+function markPopupSeen() {
+  try { localStorage.setItem(POPUP_KEY, String(Date.now())); } catch (_) {}
+}
+
+function openPlanPopup() {
+  const bg = document.getElementById('plan-modal');
+  fill(document.getElementById('plan-modal-body'),
+    planGrid({ student, email: user.email, payable }));
+
+  const close = () => { bg.classList.remove('open'); markPopupSeen(); };
+  document.getElementById('plan-modal-close').addEventListener('click', close);
+  bg.addEventListener('click', e => { if (e.target === bg) close(); });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && bg.classList.contains('open')) close();
+  });
+
+  bg.classList.add('open');
+  markPopupSeen();                     // seen counts, dismissed or not
+  document.getElementById('plan-modal-close').focus();
+}
+
 function render() {
   const tags = ['all', ...new Set(forSale.map(m => (m.tag || '').trim() || 'General'))];
 
@@ -363,6 +454,19 @@ try {
   }
   renderSampleBanner();
   renderPlanStrip();
+
+  // The offer, inline and as a popup — only for people who have paid
+  // nothing. Someone who has already bought from you does not need to
+  // be sold to every time they open the store.
+  if (!isAdmin && forSale.length) {
+    const settings = await loadPaymentSettings();
+    payable = !!(settings?.upiVpa && settings?.enabled !== false);
+
+    if (payable && !(await hasEverPaid())) {
+      renderPlanOffer();
+      if (popupDue()) openPlanPopup();
+    }
+  }
 } catch (e) {
   console.error('store:', e);
   fill(contentEl, emptyState('⚠️', 'Could not load the store', friendlyError(e, { isAdmin })));

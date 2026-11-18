@@ -197,6 +197,20 @@ simply stops. Admin → Students → 🎟️ Plan grants, extends or ends one by
 > cannot detect it — rules aren't readable from the client — so Admin →
 > Maintenance carries a standing warning instead.
 
+**Where the offer appears.** The plan cards are rendered from one place,
+`assets/js/plansui.js`, for the plans page, the store and the store's popup —
+three hand-written copies of a price is three chances to be wrong. The store
+shows them inline and opens them once as a popup.
+
+Both are shown **only to someone who has never paid**: no paid order and no
+live plan. Deliberately not "holds no materials" — an instructor assignment and
+a free sample both land in `files[]`, and neither of those is a customer. If
+the orders read fails the popup is suppressed rather than shown, because the
+cost of nagging a paying customer is higher than the cost of missing a pitch.
+
+The popup remembers its dismissal for **7 days** (`localStorage`, per device).
+A modal on every visit is how a site teaches people to close it unread.
+
 ## Material requests
 
 Students ask for a chapter they need; you triage it in **Admin → Requests**.

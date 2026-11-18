@@ -395,6 +395,26 @@ html:not(.booting) #boot{display:none;}
 .plan-blurb{font-size:.84rem;color:var(--ink2);line-height:1.6;margin:6px 0 14px;flex:1;}
 .plan-card .btn{margin-top:auto;}
 
+/* Compact cards: side by side even on a phone, because there are
+   only two and the store should not be pushed off the screen. */
+.plan-grid.is-compact{grid-template-columns:repeat(2,1fr);gap:10px;margin-bottom:22px;}
+.plan-card.is-compact{padding:16px 14px;gap:3px;}
+.plan-card.is-compact h2{font-size:.82rem;}
+.plan-card.is-compact .plan-price{font-size:1.3rem;}
+.plan-card.is-compact .plan-per{display:block;margin-left:0;}
+.plan-card.is-compact .btn{margin-top:12px;}
+
+.plan-offer-head{
+  display:flex;align-items:baseline;justify-content:space-between;
+  gap:12px;flex-wrap:wrap;margin-bottom:10px;
+}
+.plan-offer-head strong{font-weight:500;font-size:.92rem;color:var(--ink);}
+.plan-offer-more{font-size:.78rem;color:var(--accent-ink);text-decoration:none;}
+.plan-offer-more:hover{text-decoration:underline;}
+
+/* In the popup the cards get their full description back. */
+#plan-modal .plan-grid{margin-bottom:0;}
+
 /* The store's standing offer, sitting under the sample banner. */
 .plan-strip{
   display:flex;align-items:center;gap:14px;flex-wrap:wrap;
