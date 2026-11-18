@@ -1,0 +1,159 @@
+<!DOCTYPE html>
+<html lang="en" class="booting">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+<title>Plans — Chapter Kit</title>
+<meta name="robots" content="noindex">
+
+<link rel="manifest" href="manifest.json">
+<meta name="theme-color" content="#6d5ef9">
+<link rel="apple-touch-icon" href="icon-192.png">
+<link rel="icon" type="image/png" href="icon-192.png">
+
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=DM+Serif+Display&family=DM+Sans:wght@400;500&display=swap" rel="stylesheet">
+<link rel="stylesheet" href="assets/css/app.css">
+</head>
+<body>
+
+<div id="boot"><div class="spinner"></div><span class="boot-text">Loading plans…</span></div>
+
+<div id="site-header"></div>
+
+<main class="page page-narrow">
+  <div class="page-head">
+    <h1>Plans</h1>
+    <p>Subscribe and every material on the site opens — including the ones added
+       while your plan is running. Or keep buying chapters one at a time; both
+       work, and anything you buy outright stays yours for good.</p>
+  </div>
+
+  <div id="content">
+    <div class="empty"><span class="empty-ico">⏳</span><strong>Loading…</strong></div>
+  </div>
+</main>
+
+<script type="module">
+import { requireAuth, doSignOut } from './assets/js/session.js';
+import { PLAN_LIST, isSubActive, subDaysLeft, subLapsed, subUntil, perDayPaise, PLANS }
+  from './assets/js/subscriptions.js';
+import { createSubscriptionOrder, loadPaymentSettings } from './assets/js/orders.js';
+import { mountChrome, ready, el, fill, fmtMoney, fmtDate, toast, setCartCount, friendlyError }
+  from './assets/js/ui.js';
+import * as cart from './assets/js/cart.js';
+
+const { user, isAdmin, student } = await requireAuth();
+mountChrome({ active: 'plans', user, isAdmin, onSignOut: () => doSignOut() });
+cart.onChange(setCartCount);
+
+const contentEl = document.getElementById('content');
+let settings = null;
+
+/** Where the student stands right now, before any of the plan cards. */
+function statusCard() {
+  if (isAdmin) {
+    return el('div', { class: 'callout callout-ok' },
+      el('span', {}, el('strong', {}, 'You are the admin. '),
+        'You can already open everything — this page is what students see.'));
+  }
+  if (isSubActive(student)) {
+    const days = subDaysLeft(student);
+    const plan = PLANS[student?.subPlan] || null;
+    return el('div', { class: 'callout callout-ok' },
+      el('span', {},
+        el('strong', {}, `Your ${plan ? plan.label.toLowerCase() + ' ' : ''}plan is active. `),
+        `${days} day${days === 1 ? '' : 's'} left — it ends on ${fmtDate(subUntil(student))}. `,
+        'Renewing now adds to that rather than replacing it.'));
+  }
+  if (subLapsed(student)) {
+    return el('div', { class: 'callout callout-warn' },
+      el('span', {},
+        el('strong', {}, 'Your plan ended on ' + fmtDate(subUntil(student)) + '. '),
+        'Anything you bought on its own is still in My Materials.'));
+  }
+  return null;
+}
+
+function planCard(plan, best) {
+  const buy = el('button', { class: 'btn btn-primary btn-block' },
+    isSubActive(student) ? `Add ${plan.days} more days` : `Choose ${plan.label.toLowerCase()}`);
+
+  buy.addEventListener('click', async () => {
+    buy.disabled = true;
+    buy.textContent = 'Creating order…';
+    try {
+      const order = await createSubscriptionOrder({ email: user.email, planId: plan.id });
+      location.href = `checkout.html?order=${order.id}`;
+    } catch (e) {
+      buy.disabled = false;
+      buy.textContent = `Choose ${plan.label.toLowerCase()}`;
+      toast(e.message || 'Could not start that order', 'err');
+    }
+  });
+
+  const payable = settings?.upiVpa && settings?.enabled !== false;
+
+  return el('div', { class: 'plan-card' + (best ? ' is-best' : '') },
+    best ? el('span', { class: 'plan-flag' }, 'Better value') : null,
+    el('h2', {}, plan.label),
+    el('div', { class: 'plan-price' },
+      fmtMoney(plan.pricePaise),
+      el('span', { class: 'plan-per' }, `/ ${plan.days} days`)),
+    el('p', { class: 'plan-rate' }, `about ${fmtMoney(perDayPaise(plan))} a day`),
+    el('p', { class: 'plan-blurb' }, plan.blurb),
+    payable
+      ? buy
+      : el('p', { class: 'muted small' }, 'UPI payment has not been set up yet.')
+  );
+}
+
+function whatsIncluded() {
+  const points = [
+    ['📚', 'Every material on the site, the moment you subscribe.'],
+    ['🆕', 'Anything added later, while your plan is running — at no extra cost.'],
+    ['🔓', 'Chapters you bought separately stay yours even after the plan ends.'],
+    ['🚫', 'No auto-renew. It simply stops, and nothing is charged again.']
+  ];
+  return el('div', { class: 'card' },
+    el('h2', {}, 'What a plan includes'),
+    el('ul', { class: 'plain-list' },
+      ...points.map(([ico, text]) => el('li', {},
+        el('span', { class: 'plain-list-ico', 'aria-hidden': 'true' }, ico),
+        el('span', {}, text))))
+  );
+}
+
+try {
+  settings = await loadPaymentSettings();
+
+  const cheapestPerDay = Math.min(...PLAN_LIST.map(perDayPaise));
+
+  fill(contentEl,
+    statusCard(),
+    el('div', { class: 'plan-grid' },
+      ...PLAN_LIST.map(p => planCard(p, perDayPaise(p) === cheapestPerDay))),
+    whatsIncluded(),
+    el('p', { class: 'hint', style: 'margin-top:18px' },
+      'Payment is by UPI and confirmed by hand, so a plan starts once your ' +
+      'instructor has checked the payment — usually quickly, not instantly.')
+  );
+} catch (e) {
+  console.error('plans:', e);
+  fill(contentEl, el('div', { class: 'empty' },
+    el('span', { class: 'empty-ico' }, '⚠️'),
+    el('strong', {}, 'Could not load the plans'),
+    el('p', {}, friendlyError(e, { isAdmin }))));
+} finally {
+  ready();
+}
+</script>
+
+<script>
+if ('serviceWorker' in navigator) {
+  window.addEventListener('load', () => navigator.serviceWorker.register('sw.js').catch(() => {}));
+}
+</script>
+</body>
+</html>

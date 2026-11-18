@@ -29,6 +29,8 @@
     <p id="subhead">Everything assigned to your account, organised into folders.</p>
   </div>
 
+  <div id="plan-note" hidden></div>
+
   <nav class="crumbs" id="crumbs" aria-label="Breadcrumb"></nav>
 
   <div id="content">
@@ -39,6 +41,7 @@
 <script type="module">
 import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
 import { listMaterials, listFolders, kindIcon } from './assets/js/content.js';
+import { isSubActive, subDaysLeft, subLapsed, subUntil, PLANS } from './assets/js/subscriptions.js';
 import { mountChrome, ready, el, fill, esc, fmtDate, emptyState, toast, setCartCount, friendlyError } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
 
@@ -175,6 +178,42 @@ function render() {
   fill(contentEl, frag);
 }
 
+/**
+ * Why this library looks the way it does.
+ *
+ * A subscriber's shelf is the whole catalogue, which is worth
+ * saying outright — and so is the day it stops being that, since
+ * what remains afterwards is only what they bought on its own.
+ */
+function renderPlanNote() {
+  const host = document.getElementById('plan-note');
+  if (isAdmin) return;
+
+  if (isSubActive(student)) {
+    const days = subDaysLeft(student);
+    const plan = PLANS[student?.subPlan];
+    host.hidden = false;
+    fill(host, el('div', { class: 'plan-strip is-on' },
+      el('span', { class: 'plan-strip-ico' }, '🎟️'),
+      el('div', { class: 'plan-strip-body' },
+        el('strong', {}, `Everything is open on your ${plan ? plan.label.toLowerCase() + ' ' : ''}plan`),
+        el('span', {}, `${days} day${days === 1 ? '' : 's'} left, until ${fmtDate(subUntil(student))}. ` +
+                       'New materials appear here automatically.')),
+      el('a', { class: 'btn btn-secondary btn-sm', href: 'plans.html' }, 'Extend')));
+    return;
+  }
+
+  if (subLapsed(student)) {
+    host.hidden = false;
+    fill(host, el('div', { class: 'plan-strip' },
+      el('span', { class: 'plan-strip-ico' }, '🎟️'),
+      el('div', { class: 'plan-strip-body' },
+        el('strong', {}, 'Your plan ended on ' + fmtDate(subUntil(student))),
+        el('span', {}, 'What is left here is what you bought on its own — that stays yours.')),
+      el('a', { class: 'btn btn-primary btn-sm', href: 'plans.html' }, 'Start again')));
+  }
+}
+
 try {
   const [allMaterials, allFolders] = await Promise.all([listMaterials(), listFolders()]);
   folders = allFolders;
@@ -186,6 +225,7 @@ try {
 
   if (!isAdmin) visibleFolders = computeVisibleFolders();
 
+  renderPlanNote();
   render();
 } catch (e) {
   console.error('library load:', e);

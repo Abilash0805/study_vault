@@ -11,6 +11,7 @@ import {
   GoogleAuthProvider, signInWithPopup, signOut, onAuthStateChanged
 } from './firebase.js';
 import { ADMIN_EMAIL } from './config.js';
+import { isSubActive } from './subscriptions.js';
 import { toast } from './ui.js';
 
 export const isAdminEmail = (email) =>
@@ -73,8 +74,21 @@ export async function requireAuth({ adminOnly = false, allowAnon = false } = {})
   return { user, isAdmin, student };
 }
 
-/** Material IDs this user may open. Admins get null (= everything). */
+/**
+ * True when this user may open everything there is: the admin, or
+ * a student with a live subscription. Both are "no list needed",
+ * which is exactly what a subscription has to mean for materials
+ * published after it was paid for.
+ */
+export function hasFullAccess(isAdmin, student) {
+  return !!isAdmin || isSubActive(student);
+}
+
+/**
+ * Material IDs this user may open, or **null meaning everything**.
+ * Callers must handle the null: `grantedIds(...) || new Set(allIds)`.
+ */
 export function grantedIds(isAdmin, student) {
-  if (isAdmin) return null;
+  if (hasFullAccess(isAdmin, student)) return null;
   return new Set(student?.files || []);
 }

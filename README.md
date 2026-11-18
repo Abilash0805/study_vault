@@ -11,6 +11,7 @@ server to run.
 | `index.html` | public | Landing page + Google sign-in. Signed-in users are redirected on. |
 | `store.html` | signed in | Catalogue of materials on sale, with subject filters and search. |
 | `material.html?id=<id>` | signed in | Preview page for one material — cover, subject, price. |
+| `plans.html` | signed in | Weekly / monthly subscription plans and their status. |
 | `cart.html` | signed in | Cart contents and order total. |
 | `checkout.html` | signed in | Places the order, shows the UPI QR / link, takes the payment reference. |
 | `orders.html` | signed in | The student's own orders and payment status. |
@@ -25,7 +26,8 @@ Shared code lives in `assets/js/` (`config`, `firebase`, `ui`, `session`,
 ## Data model
 
 ```
-students/{email}        { email, name, files: [materialId], addedAt }
+students/{email}        { email, name, files: [materialId], addedAt,
+                          subUntil, subPlan }
 folders/{id}            { name, parentId, createdAt }
 materials/{id}          { title, tag, folderId, kind, createdAt,
                           pricePaise, published }                      ← metadata
@@ -153,6 +155,48 @@ student bought separately. Money is **not** moved for you; send it back yourself
 > limits, and accounts do get frozen — which would strand paying students. The
 > UPI ID is configuration precisely so it is quick to change.
 
+## Subscriptions
+
+Two plans, alongside buying chapters one at a time — not instead of it.
+
+| Plan | Price | Period | Per day |
+|---|---|---|---|
+| Weekly | ₹69 | 7 days | ~₹9.86 |
+| Monthly | ₹199 | 30 days | ~₹6.63 |
+
+**A subscription is a date, not a list.** `students/{email}.subUntil` holds
+epoch milliseconds, and while that is in the future the student may open every
+material — *including ones published after they paid*. A grant list could never
+do that: it can only name things that already exist.
+
+```
+hasAccess(id) = id in files[]  OR  subUntil > request.time.toMillis()
+```
+
+**`request.time` is the server's clock**, so changing the time on a phone does
+nothing. `subUntil` lives on `students/{email}`, which is admin-write only, so
+nobody can grant themselves a plan. And it sits on the student document rather
+than in a collection of its own because `hasAccess()` already fetches that
+document — the subscription check costs no extra read.
+
+**The two routes are independent on purpose.** A lapsed plan never takes away a
+chapter that was bought outright; `files[]` is permanent. While a plan is live
+the store has nothing left to sell, so individual buying resumes when it ends.
+
+**Renewing early adds on.** Buying a second month on day 20 gives 40 days, not
+30 (`nextExpiry()`). Refunding takes that plan's days back off the end rather
+than zeroing it, so refunding one of two months leaves the other (
+`expiryAfterRefund()`).
+
+There is **no auto-renew** — nothing can charge a UPI payer again — so a plan
+simply stops. Admin → Students → 🎟️ Plan grants, extends or ends one by hand.
+
+> **Publishing the rules is not optional for this one.** A project still
+> running rules from before plans existed will take a student's money and then
+> show them "no access", because `subActive()` won't be there. The health check
+> cannot detect it — rules aren't readable from the client — so Admin →
+> Maintenance carries a standing warning instead.
+
 ## Material requests
 
 Students ask for a chapter they need; you triage it in **Admin → Requests**.
@@ -179,6 +223,26 @@ something several people want, and nothing sinks by being old.
 A student may hold **5 open requests** at a time (`MAX_OPEN_PER_STUDENT`), which
 keeps one enthusiastic person from flooding the queue. Firestore rules also cap
 field lengths, so the limits hold even if the page is bypassed.
+
+## Tests
+
+```
+python3 -m http.server 8811 &        # serve the repo
+npm install --no-save playwright-core
+node tests/smoke.mjs                 # every page loads clean
+node tests/subscriptions.mjs         # plans, access, expiry, refunds
+```
+
+Firebase is stubbed in `tests/mockfb.mjs`, so no network and no live project
+are touched. `tests/harness.mjs` seeds `window.__MOCK_DB__`, which assertions
+read back to see what a page actually wrote.
+
+**These live in the repo on purpose.** An earlier, larger suite was kept in a
+scratch directory and was lost wholesale when that directory was cleared.
+
+One thing no browser test can reach: expiry is enforced by `firestore.rules`
+against the server clock. `tests/subscriptions.mjs` asserts the clause is
+present in the file, which is the most a client-side test can honestly do.
 
 ## Links inside a material
 

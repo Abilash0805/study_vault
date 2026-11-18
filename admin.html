@@ -311,6 +311,15 @@
         Talking to project <strong class="mono" id="proj-id">—</strong>.
         If that isn't the project whose rules you published, that's the problem.
       </p>
+      <div class="callout callout-warn" style="margin-bottom:14px">
+        <span><strong>Subscriptions need the current rules.</strong>
+        The probes below cannot see this one: a plan is enforced by the
+        <span class="mono">subActive()</span> clause inside
+        <span class="mono">hasAccess()</span>, and a project still running rules
+        from before plans existed will take a student's money and then show them
+        "no access". If you have not published the rules since adding plans, do
+        that first — the panel below hands you the full text.</span>
+      </div>
       <button class="btn btn-primary" id="btn-health">Run health check</button>
       <div id="health-out" style="margin-top:14px;"></div>
     </div>
@@ -365,8 +374,11 @@ import { listFolders, listMaterials, inferKind, CONTENT_FIELDS, hasInlineContent
 import {
   STATUS, STATUS_META, listAllOrders, listLedger, ledgerTotal, auditOrder,
   confirmPayment, rejectOrder, refundOrder, expireOrder, isExpired,
-  loadPaymentSettings, savePaymentSettings
+  loadPaymentSettings, savePaymentSettings, isSubOrder
 } from './assets/js/orders.js';
+import {
+  PLAN_LIST, planById, isSubActive, subDaysLeft, subUntil, nextExpiry, DAY_MS
+} from './assets/js/subscriptions.js';
 import {
   REQ_STATUS, REQ_META, REQ_KIND, listAllRequests, setRequestStatus,
   fulfilRequest, deleteRequest, byDemand
@@ -447,17 +459,68 @@ async function loadStudents() {
       el('div', { class: 'list-body' },
         el('div', { class: 'list-title' }, s.email,
           s.name ? el('span', { class: 'muted small' }, `(${s.name})`) : null),
-        el('div', { class: 'list-sub' }, `${files.length} material${files.length !== 1 ? 's' : ''} assigned`),
+        el('div', { class: 'list-sub' },
+          `${files.length} material${files.length !== 1 ? 's' : ''} assigned`,
+          isSubActive(s)
+            ? el('span', { class: 'badge badge-green', style: 'margin-left:8px' },
+                `🎟️ ${subDaysLeft(s)}d left`)
+            : (subUntil(s)
+                ? el('span', { class: 'badge badge-grey', style: 'margin-left:8px' },
+                    'plan ended ' + fmtDate(subUntil(s)))
+                : null)),
         el('div', { class: 'pills' },
           pills.length ? pills : el('span', { class: 'muted small' }, 'Nothing assigned yet'))
       ),
       el('div', { class: 'list-actions' },
         el('button', { class: 'btn btn-secondary btn-sm', onclick: () => openAssign(d.id, s.name, files, matMap) }, 'Assign'),
+        el('button', {
+          class: 'btn btn-secondary btn-sm',
+          title: 'Give, extend or end this student\u2019s plan by hand',
+          onclick: () => editSubscription(d.id, s)
+        }, isSubActive(s) ? '🎟️ Plan ✓' : '🎟️ Plan'),
         el('button', { class: 'btn btn-danger btn-sm', onclick: () => removeStudent(d.id) }, 'Remove')
       )
     ));
   });
   fill(studentsList, frag);
+}
+
+/**
+ * Hand-adjust a subscription.
+ *
+ * The normal route is a paid order, which extends it automatically.
+ * This is for the cases that route cannot cover: someone who paid
+ * you another way, an apology day or two, or ending one early.
+ */
+async function editSubscription(email, s) {
+  const live = isSubActive(s);
+  const options = PLAN_LIST.map((p, i) => `${i + 1}. +${p.days} days (${p.label})`).join('\n');
+  const pick = prompt(
+    `Plan for ${email}.\n\n` +
+    (live ? `Active: ${subDaysLeft(s)} day(s) left, until ${fmtDate(subUntil(s))}.\n\n`
+          : subUntil(s) ? `Ended ${fmtDate(subUntil(s))}.\n\n` : 'No plan yet.\n\n') +
+    `${options}\n0. End it now\n\nEnter a number:`, '');
+  if (pick === null) return;
+
+  const n = parseInt(pick, 10);
+  if (!Number.isInteger(n) || n < 0 || n > PLAN_LIST.length) {
+    toast('That number is not in the list', 'err'); return;
+  }
+
+  const current = subUntil(s);
+  const until = n === 0 ? 0 : nextExpiry(current, PLAN_LIST[n - 1]);
+  if (n === 0 && !confirm(`End ${email}'s plan right now?`)) return;
+
+  try {
+    await setDoc(doc(db, 'students', email), {
+      email,
+      subUntil: until,
+      ...(n === 0 ? {} : { subPlan: PLAN_LIST[n - 1].id }),
+      subUpdatedAt: Date.now()
+    }, { merge: true });
+    toast(until ? `Plan runs to ${fmtDate(until)}` : 'Plan ended', 'ok');
+    loadStudents();
+  } catch (e) { toast('Error: ' + e.message, 'err'); }
 }
 
 async function revoke(email, fileId) {
@@ -1008,6 +1071,9 @@ function renderPending() {
       el('div', { class: 'order-head' },
         el('span', { class: 'mono', style: 'font-weight:500' }, o.orderNo),
         el('span', { class: 'badge badge-blue' }, 'Awaiting confirmation'),
+        isSubOrder(o)
+          ? el('span', { class: 'badge badge-violet' }, `🎟️ ${o.planDays}-day plan`)
+          : null,
         el('span', { class: 'muted small' }, o.email),
         el('span', { style: 'margin-left:auto;font-weight:500' }, fmtMoney(o.totalPaise))
       ),
@@ -1053,9 +1119,15 @@ async function approve(order, btn) {
   const warning = danger.length
     ? `\n\nThis order has serious flags:\n• ${danger.map(f => f.text).join('\n• ')}`
     : '';
+  const plan = isSubOrder(order) ? planById(order.plan) : null;
+  const grants = plan
+    ? `This starts a ${plan.label.toLowerCase()} plan: ${plan.days} days of access to ` +
+      `everything, added on to any time they already have.\n`
+    : '';
+
   if (!confirm(
     `Confirm ${fmtMoney(order.totalPaise)} received from ${order.email}?\n\n` +
-    `Order ${order.orderNo}\n` +
+    `Order ${order.orderNo}\n` + grants +
     (order.utr
       ? `UPI reference: ${order.utr}\n`
       : `No reference given — look for "Chapter Kit ${order.orderNo}" in the payment note.\n`) +
@@ -1088,6 +1160,8 @@ async function reject(order) {
 async function refund(order) {
   const reason = prompt(
     `Refund order ${order.orderNo} (${fmtMoney(order.totalPaise)})?\n\n` +
+    (isSubOrder(order)
+      ? `This takes ${order.planDays} days back off their plan.\n\n` : '') +
     `This records the refund and removes access to its materials ` +
     `(unless another paid order also covers them).\n\n` +
     `You must send the money back yourself — this does not move funds.\n\nReason:`,
@@ -1145,7 +1219,9 @@ function renderOrders() {
             expired ? 'Expired' : meta.label),
           el('span', {}, fmtMoney(o.totalPaise))),
         el('div', { class: 'list-sub' },
-          `${o.email} · ${o.items.length} item(s) · ${fmtDateTime(o.createdAt)}` +
+          `${o.email} · ` +
+          (isSubOrder(o) ? `${o.planDays}-day plan` : `${o.items.length} item(s)`) +
+          ` · ${fmtDateTime(o.createdAt)}` +
           (o.utr ? ` · UTR ${o.utr}` : '')),
         o.rejectedReason ? el('div', { class: 'list-sub' }, '↳ ' + o.rejectedReason) : null,
         o.refundReason ? el('div', { class: 'list-sub' }, '↳ ' + o.refundReason) : null

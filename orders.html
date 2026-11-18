@@ -56,7 +56,7 @@
 import { requireAuth, doSignOut } from './assets/js/session.js';
 import { mountChrome, ready, el, fill, fmtMoney, fmtDateTime, emptyState, setCartCount, toast, friendlyError } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
-import { listMyOrders, STATUS, STATUS_META, isExpired } from './assets/js/orders.js';
+import { listMyOrders, STATUS, STATUS_META, isExpired, isSubOrder } from './assets/js/orders.js';
 
 const { user, isAdmin } = await requireAuth();
 mountChrome({ active: 'orders', user, isAdmin, onSignOut: () => doSignOut() });
@@ -100,6 +100,7 @@ function card(order) {
       el('span', { class: 'order-no' }, order.orderNo),
       el('span', { class: 'badge ' + (expired ? 'badge-grey' : meta.badge) },
         expired ? 'Expired' : meta.label),
+      isSubOrder(order) ? el('span', { class: 'badge badge-violet' }, '🎟️ Plan') : null,
       el('span', { class: 'order-when' }, fmtDateTime(order.createdAt)),
       el('span', { class: 'order-total' }, fmtMoney(order.totalPaise))
     ),
@@ -125,11 +126,15 @@ function card(order) {
   }
 
   if (order.status === STATUS.PAID) {
-    box.append(el('div', { class: 'list-actions', style: 'margin-top:12px' },
-      ...order.items.map(i => el('a', {
-        class: 'btn btn-secondary btn-sm',
-        href: `viewer.html?id=${encodeURIComponent(i.id)}`
-      }, 'Open ' + i.title))));
+    box.append(isSubOrder(order)
+      ? el('div', { class: 'list-actions', style: 'margin-top:12px' },
+          el('a', { class: 'btn btn-secondary btn-sm', href: 'library.html' }, 'My Materials'),
+          el('a', { class: 'btn btn-secondary btn-sm', href: 'plans.html' }, 'Plan status'))
+      : el('div', { class: 'list-actions', style: 'margin-top:12px' },
+          ...order.items.map(i => el('a', {
+            class: 'btn btn-secondary btn-sm',
+            href: `viewer.html?id=${encodeURIComponent(i.id)}`
+          }, 'Open ' + i.title))));
   }
 
   return box;

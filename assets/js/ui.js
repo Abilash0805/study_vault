@@ -92,6 +92,7 @@ const NAV = [
   { id: 'library', href: 'library.html', icon: '📚', label: 'My Materials', primary: true, shortLabel: 'Materials' },
   { id: 'request', href: 'request.html', icon: '💡', label: 'Request',      primary: true },
   { id: 'cart',    href: 'cart.html',    icon: '🛒', label: 'Cart', badge: true, primary: true },
+  { id: 'plans',   href: 'plans.html',   icon: '🎟️', label: 'Plans' },
   { id: 'orders',  href: 'orders.html',  icon: '🧾', label: 'Orders' },
   { id: 'admin',   href: 'admin.html',   icon: '⚙',  label: 'Admin', adminOnly: true }
 ];

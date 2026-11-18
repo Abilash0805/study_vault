@@ -47,18 +47,37 @@ service cloud.firestore {
       return get(/databases/$(database)/documents/students/$(callerEmail()));
     }
 
-    // True when the caller has been granted this material id.
-    // `.get('files', [])` keeps a student doc with no files[] from erroring.
+    // An active subscription: `subUntil` is epoch milliseconds, and
+    // request.time is the SERVER's clock, so a student cannot extend
+    // their own access by changing the time on their phone. subUntil
+    // itself lives on students/{email}, which is admin-write only.
+    //
+    // It is kept on the student document on purpose rather than in a
+    // collection of its own: hasAccess() already fetches that document,
+    // so the subscription check costs no extra read.
+    function subActive() {
+      return studentDoc().data.get('subUntil', 0) > request.time.toMillis();
+    }
+
+    // True when the caller may open this material — either because it
+    // was granted to them outright, or because their subscription is
+    // live. The two are deliberately independent: a lapsed subscription
+    // never takes away something that was bought on its own.
+    //
+    // `.get(…, default)` keeps a student doc missing either field from
+    // erroring the whole rule.
     function hasAccess(materialId) {
       return signedIn()
         && exists(/databases/$(database)/documents/students/$(callerEmail()))
-        && materialId in studentDoc().data.get('files', []);
+        && (materialId in studentDoc().data.get('files', []) || subActive());
     }
 
     // ── STUDENTS ────────────────────────────────────────────
+    // { email, name, files: [materialId], subUntil, subPlan }
+    //
     // Admin manages everyone. A student may read only their own doc
     // (to discover what they've been granted) and may never write it,
-    // so nobody can grant themselves access.
+    // so nobody can grant themselves access — or a subscription.
     match /students/{email} {
       allow read, write: if isAdmin();
       allow read: if signedIn() && callerEmail() == email;

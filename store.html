@@ -45,6 +45,7 @@
   </div>
 
   <div id="sample-banner" hidden></div>
+  <div id="plan-strip" hidden></div>
 
   <div class="filters" id="filters"></div>
 
@@ -57,6 +58,7 @@
 import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
 import { listMaterials, kindIcon, readCover } from './assets/js/content.js';
 import { createFreeSampleRequest, findMySampleRequest, REQ_STATUS } from './assets/js/requests.js';
+import { isSubActive, subDaysLeft, subLapsed, PLANS } from './assets/js/subscriptions.js';
 import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount, friendlyError } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
 
@@ -111,6 +113,9 @@ const coverQueue = (() => {
 
 let forSale = [];
 let owned = new Set();
+const subscribed = isSubActive(student);
+/** What they hold in their own right — a lapsed plan never touches this. */
+const ownedOutright = new Set(student?.files || []);
 let activeTag = 'all';
 let search = '';
 
@@ -142,7 +147,8 @@ function tile(m) {
 
   if (isOwned) {
     foot.append(
-      el('span', { class: 'owned-note' }, '✓ In your library'),
+      el('span', { class: 'owned-note' },
+        subscribed && !ownedOutright.has(m.id) ? '✓ In your plan' : '✓ In your library'),
       el('a', { class: 'btn btn-secondary btn-sm', href: `viewer.html?id=${encodeURIComponent(m.id)}` }, 'Open')
     );
   } else {
@@ -203,6 +209,9 @@ async function renderSampleBanner() {
   if (req && (req.status === REQ_STATUS.DECLINED ||
               req.status === REQ_STATUS.WITHDRAWN)) return;
 
+  // A subscriber is well past the trial, whatever else they hold.
+  if (subscribed) return;
+
   // Past the trial stage: they already have something to read.
   if (hasMaterialsOfTheirOwn(req)) return;
 
@@ -262,6 +271,42 @@ async function renderSampleBanner() {
   ));
 }
 
+/**
+ * The standing offer, under the sample banner.
+ *
+ * Shown to everyone, subscribed or not: to a subscriber it is the
+ * only place the plan's remaining days appear while they browse,
+ * and that is worth more than the row of pixels it costs.
+ */
+function renderPlanStrip() {
+  const host = document.getElementById('plan-strip');
+  if (isAdmin) { host.hidden = true; return; }
+  host.hidden = false;
+
+  if (subscribed) {
+    const days = subDaysLeft(student);
+    const plan = PLANS[student?.subPlan];
+    fill(host, el('div', { class: 'plan-strip is-on' },
+      el('span', { class: 'plan-strip-ico' }, '🎟️'),
+      el('div', { class: 'plan-strip-body' },
+        el('strong', {}, `Your ${plan ? plan.label.toLowerCase() + ' ' : ''}plan is active`),
+        el('span', {}, `Everything here is open to you. ${days} day${days === 1 ? '' : 's'} left.`)),
+      el('a', { class: 'btn btn-secondary btn-sm', href: 'plans.html' }, 'Extend')));
+    return;
+  }
+
+  const lapsed = subLapsed(student);
+  fill(host, el('div', { class: 'plan-strip' },
+    el('span', { class: 'plan-strip-ico' }, '🎟️'),
+    el('div', { class: 'plan-strip-body' },
+      el('strong', {}, lapsed ? 'Your plan has ended' : 'Buying a few of these?'),
+      el('span', {}, lapsed
+        ? 'Start it again to reopen everything on the site.'
+        : `${fmtMoney(PLANS.monthly.pricePaise)} a month opens every material here, including new ones.`)),
+    el('a', { class: 'btn btn-primary btn-sm', href: 'plans.html' },
+      lapsed ? 'Start again' : 'See plans')));
+}
+
 function render() {
   const tags = ['all', ...new Set(forSale.map(m => (m.tag || '').trim() || 'General'))];
 
@@ -317,6 +362,7 @@ try {
     render();
   }
   renderSampleBanner();
+  renderPlanStrip();
 } catch (e) {
   console.error('store:', e);
   fill(contentEl, emptyState('⚠️', 'Could not load the store', friendlyError(e, { isAdmin })));

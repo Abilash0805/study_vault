@@ -33,7 +33,8 @@
 </main>
 
 <script type="module">
-import { requireAuth, doSignOut, grantedIds } from './assets/js/session.js';
+import { requireAuth, doSignOut, hasFullAccess } from './assets/js/session.js';
+import { isSubActive } from './assets/js/subscriptions.js';
 import { readMaterial, readCover, kindIcon, kindLabel } from './assets/js/content.js';
 import { mountChrome, ready, el, fill, fmtMoney, fmtDate, emptyState, toast,
          setCartCount, friendlyError } from './assets/js/ui.js';
@@ -87,8 +88,11 @@ function actions(m, isOwned) {
   const foot = el('div', { class: 'preview-buy' });
 
   if (isOwned) {
+    const viaPlan = !isAdmin && isSubActive(student)
+      && !new Set(student?.files || []).has(m.id);
     foot.append(
-      el('span', { class: 'owned-note' }, '✓ In your library'),
+      el('span', { class: 'owned-note' },
+        viaPlan ? '✓ Included in your plan' : '✓ In your library'),
       el('a', { class: 'btn btn-primary',
                 href: `viewer.html?id=${encodeURIComponent(m.id)}` }, 'Open it'));
     return foot;
@@ -122,6 +126,14 @@ function actions(m, isOwned) {
   return foot;
 }
 
+/** The other way to get this, for someone weighing up a single buy. */
+function planNote(m) {
+  if (isAdmin || isSubActive(student) || !m.published || m.pricePaise === null) return null;
+  return el('p', { class: 'hint', style: 'margin:-10px 0 22px' },
+    'Or open this and everything else with a plan — ',
+    el('a', { href: 'plans.html' }, 'see plans'), '.');
+}
+
 function renderMaterial(m, isOwned) {
   document.title = `${m.title} — Chapter Kit`;
 
@@ -136,6 +148,7 @@ function renderMaterial(m, isOwned) {
         m.createdAt ? el('span', { class: 'badge badge-grey' }, 'Added ' + fmtDate(m.createdAt)) : null)),
 
     actions(m, isOwned),
+    planNote(m),
     whatYouGet(m)
   );
 }
@@ -150,9 +163,11 @@ try {
       fill(contentEl, emptyState('🔍', 'Material not found',
         'It may have been removed. Try the store for what is available now.'));
     } else {
-      // grantedIds() returns null for the admin, who can open anything.
-      const owned = grantedIds(isAdmin, student);
-      renderMaterial(m, isAdmin || owned.has(m.id));
+      // A subscription opens everything, so this is not a list lookup:
+      // full access, or the material is in their own files[].
+      const owned = hasFullAccess(isAdmin, student)
+        || new Set(student?.files || []).has(m.id);
+      renderMaterial(m, owned);
     }
   }
 } catch (e) {

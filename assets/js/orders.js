@@ -14,6 +14,18 @@ import {
   db, doc, getDoc, setDoc, addDoc, updateDoc,
   collection, getDocs, query, where, arrayUnion
 } from './firebase.js';
+import { planById, nextExpiry, expiryAfterRefund } from './subscriptions.js';
+
+/**
+ * What an order is for. Orders without the field are material
+ * orders — every order placed before subscriptions existed.
+ */
+export const ORDER_KIND = { MATERIALS: 'materials', SUBSCRIPTION: 'subscription' };
+
+export const orderKind = (o) =>
+  o?.kind === ORDER_KIND.SUBSCRIPTION ? ORDER_KIND.SUBSCRIPTION : ORDER_KIND.MATERIALS;
+
+export const isSubOrder = (o) => orderKind(o) === ORDER_KIND.SUBSCRIPTION;
 
 /* ── status lifecycle ─────────────────────────────────────
    pending_payment ──submitUtr──> awaiting_confirmation
@@ -158,6 +170,39 @@ export async function createOrder({ email, ids, byId, ownedIds }) {
 }
 
 /**
+ * An order for a subscription period.
+ *
+ * It carries a single synthetic line item so the order renders,
+ * totals and reconciles exactly like any other — the admin's
+ * payment queue, the ledger and the UPI reference all work
+ * unchanged. What it must never do is reach the grant code that
+ * adds item ids to files[]; `kind` is what keeps those apart.
+ */
+export async function createSubscriptionOrder({ email, planId }) {
+  const plan = planById(planId);
+  if (!plan) throw new Error('Unknown plan.');
+
+  const orderNo = newOrderNo();
+  const order = {
+    orderNo,
+    txnRef: newTxnRef(orderNo),
+    email: email.toLowerCase(),
+    kind: ORDER_KIND.SUBSCRIPTION,
+    plan: plan.id,
+    planDays: plan.days,
+    items: [{ id: `plan:${plan.id}`, title: `${plan.label} plan — all materials`,
+              pricePaise: plan.pricePaise }],
+    totalPaise: plan.pricePaise,
+    status: STATUS.PENDING,
+    createdAt: Date.now(),
+    updatedAt: Date.now()
+  };
+
+  const ref = await addDoc(collection(db, 'orders'), order);
+  return { id: ref.id, ...order };
+}
+
+/**
  * Student says "I've paid".
  *
  * The reference is optional on purpose: the QR already carries the
@@ -228,6 +273,7 @@ export const isExpired = (o) =>
  */
 export function auditOrder(order, allOrders, materialsById) {
   const flags = [];
+  const subscription = isSubOrder(order);
 
   // A UPI reference can only pay for one order.
   if (order.utr) {
@@ -253,14 +299,18 @@ export function auditOrder(order, allOrders, materialsById) {
     }
   }
 
-  // The stored total must still match current prices.
-  const live = order.items.reduce((s, i) => {
-    const m = materialsById[i.id];
-    return s + (m && Number.isFinite(m.pricePaise) ? m.pricePaise : i.pricePaise);
-  }, 0);
-  if (live !== order.totalPaise) {
-    flags.push({ level: 'warn',
-      text: `Order total (${(order.totalPaise/100).toFixed(2)}) differs from current prices (${(live/100).toFixed(2)}).` });
+  // The stored total must still match current prices. Skipped for a
+  // subscription: its line item is a plan, not a material, so there
+  // is no catalogue price to compare against.
+  if (!subscription) {
+    const live = order.items.reduce((s, i) => {
+      const m = materialsById[i.id];
+      return s + (m && Number.isFinite(m.pricePaise) ? m.pricePaise : i.pricePaise);
+    }, 0);
+    if (live !== order.totalPaise) {
+      flags.push({ level: 'warn',
+        text: `Order total (${(order.totalPaise/100).toFixed(2)}) differs from current prices (${(live/100).toFixed(2)}).` });
+    }
   }
 
   const sum = order.items.reduce((s, i) => s + (i.pricePaise || 0), 0);
@@ -288,11 +338,17 @@ export function auditOrder(order, allOrders, materialsById) {
  * safe direction to fail (the student gets what they paid for).
  */
 export async function confirmPayment(order, { method = 'manual', actor, reference } = {}) {
-  const ids = order.items.map(i => i.id);
-
-  await updateDoc(doc(db, 'students', order.email), {
-    files: arrayUnion(...ids)
-  });
+  if (isSubOrder(order)) {
+    await grantSubscription(order);
+  } else {
+    const ids = order.items.map(i => i.id);
+    // setDoc/merge, not updateDoc: a student who signed in and bought
+    // something before the admin ever added them has no document yet,
+    // and updateDoc would fail at the worst possible moment — after
+    // they have paid.
+    await setDoc(doc(db, 'students', order.email),
+      { email: order.email, files: arrayUnion(...ids) }, { merge: true });
+  }
 
   await updateDoc(doc(db, 'orders', order.id), {
     status: STATUS.PAID,
@@ -306,9 +362,35 @@ export async function confirmPayment(order, { method = 'manual', actor, referenc
   await writeLedger({
     orderId: order.id, orderNo: order.orderNo, email: order.email,
     type: 'charge', amountPaise: order.totalPaise,
-    note: `Payment confirmed (${method})${order.utr ? ' · UTR ' + order.utr : ''}`,
+    note: `${isSubOrder(order) ? order.plan + ' subscription' : 'Payment'} confirmed (${method})`
+          + (order.utr ? ' · UTR ' + order.utr : ''),
     actor
   });
+}
+
+/**
+ * Start or extend a subscription.
+ *
+ * Read-then-write rather than a single increment, because the new
+ * end date depends on whether the current one is still in the
+ * future — renewing early must add to what is left, not replace it.
+ * The window between the read and the write only matters if the
+ * same student is confirmed twice at once, which one admin
+ * tapping one button cannot do.
+ */
+async function grantSubscription(order) {
+  const plan = planById(order.plan);
+  if (!plan) throw new Error(`Order ${order.orderNo} names an unknown plan.`);
+
+  const snap = await getDoc(doc(db, 'students', order.email));
+  const current = snap.exists() ? Number(snap.data().subUntil || 0) : 0;
+
+  await setDoc(doc(db, 'students', order.email), {
+    email: order.email,
+    subUntil: nextExpiry(current, plan),
+    subPlan: plan.id,
+    subUpdatedAt: Date.now()
+  }, { merge: true });
 }
 
 export async function rejectOrder(order, reason, actor) {
@@ -333,6 +415,8 @@ export async function rejectOrder(order, reason, actor) {
  * student separately bought.
  */
 export async function refundOrder(order, reason, actor, allOrders = []) {
+  if (isSubOrder(order)) return refundSubscription(order, reason, actor);
+
   const stillPaidFor = new Set();
   for (const o of allOrders) {
     if (o.id === order.id) continue;
@@ -363,6 +447,39 @@ export async function refundOrder(order, reason, actor, allOrders = []) {
     orderId: order.id, orderNo: order.orderNo, email: order.email,
     type: 'refund', amountPaise: -order.totalPaise,
     note: (reason || 'Refunded') + (revoke.length ? ` · revoked ${revoke.length} item(s)` : ''),
+    actor
+  });
+}
+
+/**
+ * Refunding a subscription takes its days back off the end date.
+ *
+ * Not "set it to zero": someone who bought two months and is
+ * refunded one should keep the other. If taking the days off
+ * leaves nothing in the future, the subscription is simply over.
+ */
+async function refundSubscription(order, reason, actor) {
+  const plan = planById(order.plan);
+  const snap = await getDoc(doc(db, 'students', order.email));
+  const current = snap.exists() ? Number(snap.data().subUntil || 0) : 0;
+  const until = plan ? expiryAfterRefund(current, plan) : 0;
+
+  await setDoc(doc(db, 'students', order.email),
+    { subUntil: until, subUpdatedAt: Date.now() }, { merge: true });
+
+  await updateDoc(doc(db, 'orders', order.id), {
+    status: STATUS.REFUNDED,
+    refundedAt: Date.now(),
+    updatedAt: Date.now(),
+    refundReason: reason || '',
+    refundedBy: actor || null
+  });
+
+  await writeLedger({
+    orderId: order.id, orderNo: order.orderNo, email: order.email,
+    type: 'refund', amountPaise: -order.totalPaise,
+    note: (reason || 'Refunded') +
+          (until ? ' · subscription shortened' : ' · subscription ended'),
     actor
   });
 }
