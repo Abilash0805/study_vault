@@ -376,7 +376,7 @@ const awaiting = (d, extra = {}) => {
   check(!(await a.$eval('#plan-offer', e => !e.hidden)), 'offer: hidden from a subscriber');
   await a.close();
 
-  // someone who bought a single chapter
+  // someone who bought a single chapter is still worth asking
   const d = fixture();
   d.orders['o-done'] = {
     orderNo: 'CK-260101-DDDD', email: 'student@example.com',
@@ -386,9 +386,17 @@ const awaiting = (d, extra = {}) => {
   const b = await openPage(browser, { who: 'student', db: d });
   await b.goto(BASE + 'store.html', { waitUntil: 'networkidle' });
   await b.waitForTimeout(1600);
-  check(!(await b.$eval('#plan-modal', e => e.classList.contains('open'))),
-        'popup: never shown to someone who bought a chapter');
+  check(await b.$eval('#plan-modal', e => e.classList.contains('open')),
+        'popup: still shown to someone who bought a chapter but has no plan');
   await b.close();
+
+  // and so is someone whose plan has run out
+  const c2 = await openPage(browser, { who: 'student', db: withSub(fixture(), -3 * DAY) });
+  await c2.goto(BASE + 'store.html', { waitUntil: 'networkidle' });
+  await c2.waitForTimeout(1600);
+  check(await c2.$eval('#plan-modal', e => e.classList.contains('open')),
+        'popup: shown again once a plan has lapsed');
+  await c2.close();
 
   // the admin
   const c = await openPage(browser, { who: 'admin', db: fixture() });

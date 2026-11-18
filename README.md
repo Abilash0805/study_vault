@@ -202,11 +202,11 @@ simply stops. Admin → Students → 🎟️ Plan grants, extends or ends one by
 three hand-written copies of a price is three chances to be wrong. The store
 shows them inline and opens them once as a popup.
 
-Both are shown **only to someone who has never paid**: no paid order and no
-live plan. Deliberately not "holds no materials" — an instructor assignment and
-a free sample both land in `files[]`, and neither of those is a customer. If
-the orders read fails the popup is suppressed rather than shown, because the
-cost of nagging a paying customer is higher than the cost of missing a pitch.
+Both are withheld from exactly one person: **someone whose plan is already
+running**. There is nothing to sell them. Buying a chapter outright excludes
+nobody — that reader is who a plan is worth most to — and someone whose plan
+has lapsed is asked again. The check is `isSubActive(student)`, so it costs no
+Firestore read.
 
 The popup remembers its dismissal for **7 days** (`localStorage`, per device).
 A modal on every visit is how a site teaches people to close it unread.

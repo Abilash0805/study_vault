@@ -73,7 +73,7 @@ import { listMaterials, kindIcon, readCover } from './assets/js/content.js';
 import { createFreeSampleRequest, findMySampleRequest, REQ_STATUS } from './assets/js/requests.js';
 import { isSubActive, subDaysLeft, subLapsed, PLANS } from './assets/js/subscriptions.js';
 import { planGrid } from './assets/js/plansui.js';
-import { listMyOrders, STATUS, loadPaymentSettings } from './assets/js/orders.js';
+import { loadPaymentSettings } from './assets/js/orders.js';
 import { mountChrome, ready, el, fill, fmtMoney, emptyState, toast, setCartCount, friendlyError } from './assets/js/ui.js';
 import * as cart from './assets/js/cart.js';
 
@@ -323,28 +323,6 @@ function renderPlanStrip() {
       lapsed ? 'Start again' : 'See plans')));
 }
 
-/**
- * Has this person ever actually paid?
- *
- * Not "do they hold any materials": an instructor assignment and a
- * free sample both land in files[], and neither is a customer. Only
- * a paid order is, which is the line the popup is not supposed to
- * cross. An active plan counts even without one, since the admin can
- * grant a plan by hand.
- */
-async function hasEverPaid() {
-  if (subscribed) return true;
-  try {
-    const mine = await listMyOrders(user.email);
-    return mine.some(o => o.status === STATUS.PAID);
-  } catch (e) {
-    // Reading orders is not worth blocking the store for — but a
-    // failure here must not turn into nagging a paying customer.
-    console.debug('orders:', e?.code || e?.message);
-    return true;
-  }
-}
-
 /** The plans, inline in the store, for someone who has not paid. */
 function renderPlanOffer() {
   const host = document.getElementById('plan-offer');
@@ -455,14 +433,16 @@ try {
   renderSampleBanner();
   renderPlanStrip();
 
-  // The offer, inline and as a popup — only for people who have paid
-  // nothing. Someone who has already bought from you does not need to
-  // be sold to every time they open the store.
-  if (!isAdmin && forSale.length) {
+  // The offer, inline and as a popup. The only person it is withheld
+  // from is someone whose plan is already running — there is nothing
+  // to sell them. Buying a chapter outright does not exclude anyone:
+  // that reader is exactly who a plan is worth more to, and someone
+  // whose plan has lapsed should be asked again.
+  if (!isAdmin && !subscribed && forSale.length) {
     const settings = await loadPaymentSettings();
     payable = !!(settings?.upiVpa && settings?.enabled !== false);
 
-    if (payable && !(await hasEverPaid())) {
+    if (payable) {
       renderPlanOffer();
       if (popupDue()) openPlanPopup();
     }
